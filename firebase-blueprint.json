@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Recyclable product or industrial waste",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "unit": { "type": "string" },
+        "stock": { "type": "number" },
+        "lastUpdate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "category", "price", "unit"]
+    },
+    "CustomerPF": {
+      "title": "Customer (Individual)",
+      "description": "Individual customer (Pessoa Física)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "cpf": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["name", "cpf"]
+    },
+    "CustomerPJ": {
+      "title": "Customer (Corporate)",
+      "description": "Corporate customer (Pessoa Jurídica)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "cnpj": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["name", "cnpj"]
+    },
+    "FinancialRecord": {
+      "title": "Financial Record",
+      "description": "Income or expense record",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "value": { "type": "number" },
+        "type": { "type": "string", "enum": ["receita", "despesa"] },
+        "date": { "type": "string", "format": "date-time" },
+        "category": { "type": "string" }
+      },
+      "required": ["description", "value", "type", "date"]
+    }
+  },
+  "firestore": {
+    "/products": { "schema": "Product", "description": "List of products" },
+    "/customersPF": { "schema": "CustomerPF", "description": "Individual customers" },
+    "/customersPJ": { "schema": "CustomerPJ", "description": "Corporate customers" },
+    "/financials": { "schema": "FinancialRecord", "description": "Financial transactions" }
+  }
+}
