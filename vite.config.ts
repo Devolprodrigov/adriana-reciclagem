@@ -4,7 +4,7 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/', // MUDE DE '/adriana-reciclagem/' PARA '/'
+  base: '/', // ISSO resolve o erro 404 da sua foto!
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
