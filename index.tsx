@@ -1,8 +1,8 @@
-
+import './index.css'; // ESTA LINHA É OBRIGATÓRIA
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import './index.css';
+// ... restante do código
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -15,3 +15,6 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+
+
