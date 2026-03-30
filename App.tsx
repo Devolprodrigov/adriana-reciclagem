@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingCart, DollarSign, FileText, 
@@ -20,7 +19,7 @@ import FinanceiroView from './components/FinanceiroView';
 import NFView from './components/NFView';
 import MTRView from './components/MTRView';
 import AIInsightsView from './components/AIInsightsView';
-import { seedProducts } from './src/seedProducts';
+import { seedProducts } from './src/seedProducts'; // Importação do seu script de carga
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
@@ -37,6 +36,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
+  // Monitora o estado de autenticação
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -45,10 +45,14 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Monitora os dados do Firestore quando o usuário está logado
   useEffect(() => {
     if (!user) return;
 
     testConnection();
+    
+    // PASSO 1: DISPARA A CARGA DOS PRODUTOS DA ADRIANA
+    // Isso roda uma vez sempre que você logar ou der refresh.
     seedProducts();
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -102,6 +106,11 @@ const App: React.FC = () => {
     }
   };
 
+  const notify = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   if (!isAuthReady) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
@@ -131,11 +140,6 @@ const App: React.FC = () => {
       </div>
     );
   }
-
-  const notify = (msg: string) => {
-    setNotification(msg);
-    setTimeout(() => setNotification(null), 3000);
-  };
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20}/>, color: 'hover:bg-indigo-50 hover:text-indigo-600' },
@@ -183,7 +187,7 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
-          <nav className="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
+          <nav className="flex-1 overflow-y-auto p-4 space-y-1">
             {menuItems.map((item) => (
               <button key={item.id} onClick={() => { setActiveTab(item.id as ActiveTab); setSidebarOpen(false); }}
                 className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg' : `text-slate-500 ${item.color}`}`}>
