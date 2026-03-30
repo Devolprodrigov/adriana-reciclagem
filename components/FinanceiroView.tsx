@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, RefreshCw, Landmark, FileUp, Plus, ArrowUpCircle, ArrowDownCircle, DollarSign } from 'lucide-react';
+import { FileText, RefreshCw, Landmark, Plus, ArrowUpCircle, ArrowDownCircle, DollarSign } from 'lucide-react';
 import { collection, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { FinancialRecord, BankTransaction } from '../types';
@@ -14,7 +14,7 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 
 
 const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
   const [showModal, setShowModal] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [bankItemId, setBankItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -38,8 +38,77 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
     expense: financials.filter(f => f.type === 'despesa').reduce((a, b) => a + b.value, 0),
   };
 
-  const handlePDFImport = () => {
-    notify("A importação de PDF está temporariamente em manutenção para estabilizar o sistema.");
+  const handlePDFImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Acessa a biblioteca carregada via CDN no index.html
+    const pdfjsLib = (window as any)['pdfjs-dist/build/pdf'];
+    
+    if (!pdfjsLib) {
+      notify("O motor de PDF ainda está carregando. Tente novamente em instantes.");
+      return;
+    }
+
+    notify("Lendo extrato bancário... Aguarde.");
+    setIsProcessing(true);
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const typedarray = new Uint8Array(event.target?.result as ArrayBuffer);
+        
+        // Configuração do Worker via CDN para estabilidade
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+        
+        const pdf = await pdfjsLib.getDocument(typedarray).promise;
+        let importedCount = 0;
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          
+          // Agrupa o texto da página para processar as linhas
+          const pageText = textContent.items.map((item: any) => item.str).join(" ");
+          
+          // Regex para capturar padrão de extrato (Data + Descrição + Valor)
+          const regex = /(\d{2}\/\d{2})\s+(.*?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})/g;
+          let match;
+
+          while ((match = regex.exec(pageText)) !== null) {
+            const [_, date, description, valueStr] = match;
+            const cleanValue = parseFloat(valueStr.replace(/\./g, '').replace(',', '.'));
+            
+            // Inverte a data para o formato do banco (YYYY-MM-DD)
+            const [day, month] = date.split('/');
+            const formattedDate = `${new Date().getFullYear()}-${month}-${day}`;
+
+            await addDoc(collection(db, 'financials'), {
+              type: cleanValue >= 0 ? 'receita' : 'despesa',
+              description: `[PDF] ${description.trim()}`,
+              value: Math.abs(cleanValue),
+              date: formattedDate,
+              status: 'pago',
+              category: 'Importado PDF'
+            });
+            importedCount++;
+          }
+        }
+
+        if (importedCount > 0) {
+          notify(`Sucesso! ${importedCount} lançamentos importados.`);
+        } else {
+          notify("Nenhuma transação clara encontrada no PDF.");
+        }
+      } catch (err) {
+        console.error("Erro PDF:", err);
+        notify("Falha ao processar o arquivo PDF.");
+      } finally {
+        setIsProcessing(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   const handleAddRecord = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -69,12 +138,20 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         <div className="flex flex-wrap items-center gap-4">
           <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Controle Financeiro</h3>
           <div className="flex flex-wrap gap-2">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handlePDFImport} 
+              accept=".pdf" 
+              className="hidden" 
+            />
             <button 
-              onClick={handlePDFImport}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isProcessing}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all disabled:opacity-50"
             >
-              <FileText size={14} />
-              Importar Extrato (PDF)
+              {isProcessing ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
+              {isProcessing ? 'Processando...' : 'Importar Extrato (PDF)'}
             </button>
           </div>
         </div>
@@ -114,7 +191,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {financials.slice().reverse().map(f => (
+              {financials.slice().sort((a, b) => b.date.localeCompare(a.date)).map(f => (
                 <tr key={f.id} className="hover:bg-slate-50/50">
                   <td className="px-8 py-5 font-bold text-slate-500 text-sm">{f.date}</td>
                   <td className="px-8 py-5">
@@ -126,7 +203,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
                     <p className="font-black text-slate-800 text-sm">{f.description}</p>
                   </td>
                   <td className={`px-8 py-5 text-right font-black ${f.type === 'receita' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {formatCurrency(f.value)}
+                    {f.type === 'receita' ? '+' : '-'} {formatCurrency(f.value)}
                   </td>
                 </tr>
               ))}
@@ -152,6 +229,20 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
                     <input type="radio" name="type" value="despesa" className="hidden peer" />
                     <div className="py-3 text-center rounded-xl text-[10px] font-black uppercase tracking-widest peer-checked:bg-white peer-checked:text-rose-600 transition-all text-slate-400">Despesa</div>
                  </label>
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Descrição</label>
+                <input name="description" required placeholder="Ex: Pagamento Fornecedor" className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Valor (R$)</label>
+                  <input name="value" type="number" step="0.01" required className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Data</label>
+                  <input name="date" type="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold" />
+                </div>
               </div>
               <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">Confirmar Lançamento</button>
             </form>
