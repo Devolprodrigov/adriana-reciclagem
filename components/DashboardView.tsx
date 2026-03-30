@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { History, AlertTriangle, TrendingUp, ArrowUpRight, ArrowDownLeft, Sparkles, BrainCircuit, RefreshCw } from 'lucide-react';
 import { FinancialRecord, Product } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { GoogleGenAI } from '@google/genai';
+
 
 interface Props {
   financials: FinancialRecord[];

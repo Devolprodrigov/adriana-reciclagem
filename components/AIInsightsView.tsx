@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, BrainCircuit, RefreshCw, ChevronRight, TrendingUp, AlertCircle, Target, Wallet, Package } from 'lucide-react';
 import { FinancialRecord, Product } from '../types';
-import { GoogleGenAI } from '@google/genai';
+
 
 interface Props {
   financials: FinancialRecord[];

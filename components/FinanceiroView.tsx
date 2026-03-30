@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileText, RefreshCw, Landmark, FileUp, ExternalLink, Plus, ArrowUpCircle, ArrowDownCircle, DollarSign } from 'lucide-react';
 import { collection, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
-import * as pdfjsLib from 'pdfjs-dist';
 
 // Configuração do motor de PDF usando uma versão estável e compatível
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
