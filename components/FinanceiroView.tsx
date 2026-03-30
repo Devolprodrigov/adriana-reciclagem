@@ -1,10 +1,6 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, RefreshCw, Landmark, FileUp, ExternalLink, Plus, ArrowUpCircle, ArrowDownCircle, DollarSign } from 'lucide-react';
+import { FileText, RefreshCw, Landmark, FileUp, Plus, ArrowUpCircle, ArrowDownCircle, DollarSign } from 'lucide-react';
 import { collection, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
-
-// Configuração do motor de PDF usando uma versão estável e compatível
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 import { db, auth } from '../firebase';
 import { FinancialRecord, BankTransaction } from '../types';
 import { handleFirestoreError, OperationType } from '../src/lib/db';
@@ -14,18 +10,11 @@ interface Props {
   notify: (m: string) => void;
 }
 
-declare global {
-  interface Window {
-    PluggyConnect: any;
-  }
-}
-
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
 const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
   const [showModal, setShowModal] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [bankItemId, setBankItemId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,210 +38,9 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
     expense: financials.filter(f => f.type === 'despesa').reduce((a, b) => a + b.value, 0),
   };
 
-  const handleConnectBank = async () => {
-    try {
-      if (!window.PluggyConnect) {
-        notify("Carregando biblioteca bancária... Aguarde um momento.");
-        
-        // Tenta injetar o script dinamicamente caso não tenha carregado
-        if (!document.querySelector('script[src*="pluggy-connect"]')) {
-          const script = document.createElement('script');
-          script.src = "https://cdn.pluggy.ai/pluggy-connect/v2/index.js";
-          script.async = true;
-          document.body.appendChild(script);
-        }
-
-        let attempts = 0;
-        while (!window.PluggyConnect && attempts < 15) {
-          await new Promise(r => setTimeout(r, 500));
-          attempts++;
-        }
-        
-        if (!window.PluggyConnect) {
-          const isIframe = window.self !== window.top;
-          if (isIframe) {
-            notify("A biblioteca bancária foi bloqueada pelo navegador dentro do painel. Por favor, clique em 'ABRIR EM NOVA ABA' para conectar seu banco com segurança.");
-          } else {
-            notify("Não foi possível carregar a biblioteca bancária. Verifique sua conexão ou tente recarregar a página.");
-          }
-          return;
-        }
-      }
-
-      const response = await fetch('/api/bank/token', { method: 'POST' });
-      const data = await response.json();
-
-      if (!response.ok) {
-        notify(data.error || "Erro ao inicializar conexão bancária.");
-        return;
-      }
-
-      const { accessToken } = data;
-
-      const pluggyConnect = new window.PluggyConnect({
-        connectToken: accessToken,
-        includeSandbox: true,
-        onSuccess: async (itemData: any) => {
-          const itemId = itemData.item.id;
-          setBankItemId(itemId);
-          if (auth.currentUser) {
-            await setDoc(doc(db, 'users', auth.currentUser.uid), { bankItemId: itemId }, { merge: true });
-          }
-          notify("Banco conectado com sucesso!");
-          handleSyncTransactions(itemId);
-        },
-        onError: (error: any) => {
-          notify(`Erro no widget: ${error.message}`);
-        }
-      });
-
-      pluggyConnect.init();
-    } catch (error: any) {
-      notify(`Erro ao conectar ao banco: ${error.message}`);
-    }
+  const handlePDFImport = () => {
+    notify("A importação de PDF está temporariamente em manutenção para estabilizar o sistema.");
   };
-
-  const handleSyncTransactions = async (itemId: string) => {
-    setIsSyncing(true);
-    try {
-      const response = await fetch(`/api/bank/transactions?itemId=${itemId}`);
-      const transactions: BankTransaction[] = await response.json();
-
-      if (!Array.isArray(transactions)) throw new Error("Invalid response");
-
-      const existingIds = new Set(financials.map(f => f.bankTransactionId));
-      const newTransactions = transactions.filter(t => !existingIds.has(t.id));
-
-      if (newTransactions.length === 0) {
-        notify("Nenhuma transação nova encontrada.");
-        return;
-      }
-
-      for (const t of newTransactions) {
-        const newRecord = {
-          type: t.amount > 0 ? 'receita' : 'despesa',
-          description: `[BANCO] ${t.description}`,
-          value: Math.abs(t.amount),
-          date: t.date.split('T')[0],
-          status: 'pago',
-          category: t.category || 'Outros',
-          bankTransactionId: t.id
-        };
-        await addDoc(collection(db, 'financials'), newRecord);
-      }
-
-      notify(`${newTransactions.length} novas transações importadas!`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'financials');
-      notify("Erro ao sincronizar transações.");
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handlePDFImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    notify("Importando extrato... Aguarde um instante.");
-    setIsProcessing(true);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const typedarray = new Uint8Array(event.target?.result as ArrayBuffer);
-        const pdf = await pdfjsLib.getDocument(typedarray).promise;
-        let importedCount = 0;
-        
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          const items = textContent.items as any[];
-          
-          items.sort((a, b) => {
-            if (Math.abs(a.transform[5] - b.transform[5]) < 2) return a.transform[4] - b.transform[4];
-            return b.transform[5] - a.transform[5];
-          });
-
-          let lastY = -1;
-          let pageLines: string[] = [];
-          let currentLine = "";
-          
-          for (const item of items) {
-            // Aumentado o threshold para 5 para agrupar melhor as linhas de extratos bancários
-            if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
-              pageLines.push(currentLine);
-              currentLine = "";
-            }
-            currentLine += item.str + " ";
-            lastY = item.transform[5];
-          }
-          if (currentLine) pageLines.push(currentLine);
-
-          const promises = pageLines.map(async (line) => {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) return;
-
-            // Ignorar linhas de saldo e cabeçalho
-            const upperLine = trimmedLine.toUpperCase();
-            if (upperLine.includes("SALDO DO DIA") || 
-                upperLine.includes("SALDO ANTERIOR") ||
-                upperLine.includes("EXTRATO CONTA") ||
-                upperLine.includes("TOTAL DE") ||
-                upperLine.includes("LANÇAMENTOS")) return;
-
-            // Regex mais flexível para extrato Itaú: Data (DD/MM ou DD/MM/AAAA) + Descrição + Valor (R$)
-            // Suporta: 26/03 PIX TRANSF 70,00 ou 26/03/2026 PIX TRANSF 70,00
-            const match = trimmedLine.match(/(\d{2}\/\d{2}(?:\/\d{4})?)\s+(.*?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})(?!\d)/);
-            
-            if (match) {
-              let dateStr = match[1];
-              const description = match[2].trim();
-              const valueStr = match[3].replace(/\./g, '').replace(',', '.');
-              const value = parseFloat(valueStr);
-
-              // Se a data for DD/MM, adiciona o ano atual
-              if (dateStr.length === 5) {
-                dateStr += `/${new Date().getFullYear()}`;
-              }
-
-              if (!isNaN(value) && Math.abs(value) > 0.01) {
-                try {
-                  await addDoc(collection(db, 'financials'), {
-                    type: value >= 0 ? 'receita' : 'despesa',
-                    description: `[PDF] ${description}`,
-                    value: Math.abs(value),
-                    date: dateStr.split('/').reverse().join('-'),
-                    status: 'pago',
-                    category: 'Importado'
-                  });
-                  importedCount++;
-                } catch (error) {
-                  handleFirestoreError(error, OperationType.WRITE, 'financials');
-                }
-              }
-            }
-          });
-
-          await Promise.all(promises);
-        }
-
-        if (importedCount > 0) {
-          notify(`Sucesso! ${importedCount} lançamentos importados do PDF.`);
-        } else {
-          notify("Nenhuma transação encontrada. Verifique se o PDF é um extrato válido do Itaú.");
-        }
-      } catch (err: any) {
-        console.error("Erro no processamento:", err);
-        notify("Erro ao ler o arquivo PDF.");
-      } finally {
-        setIsProcessing(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
 
   const handleAddRecord = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -280,59 +68,13 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div className="flex flex-wrap items-center gap-4">
           <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Controle Financeiro</h3>
-          
           <div className="flex flex-wrap gap-2">
-            {bankItemId ? (
-              <button 
-                onClick={() => handleSyncTransactions(bankItemId)} 
-                disabled={isSyncing}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all disabled:opacity-50"
-              >
-                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-                {isSyncing ? 'Sincronizando...' : 'Sincronizar Itaú'}
-              </button>
-            ) : (
-              <button 
-                onClick={handleConnectBank}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-100 transition-all"
-              >
-                <Landmark size={14} />
-                Conectar Banco Direto
-              </button>
-            )}
-
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handlePDFImport} 
-              accept=".pdf" 
-              className="hidden" 
-            />
             <button 
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isProcessing}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all disabled:opacity-50"
-              title="Selecione o arquivo PDF do seu extrato bancário"
+              onClick={handlePDFImport}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-all"
             >
-              {isProcessing ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
-              {isProcessing ? 'Processando...' : 'Importar Extrato (PDF)'}
-            </button>
-
-            <button 
-              onClick={async () => {
-                const testData = [
-                  { type: 'receita', description: 'Venda Sucata Cobre', value: 4500, category: 'Vendas', date: new Date().toISOString().split('T')[0], status: 'pago' },
-                  { type: 'despesa', description: 'Pagamento Frete', value: 350, category: 'Operacional', date: new Date().toISOString().split('T')[0], status: 'pago' },
-                  { type: 'despesa', description: 'Energia Elétrica', value: 890, category: 'Operacional', date: new Date().toISOString().split('T')[0], status: 'pago' },
-                ];
-                for (const d of testData) {
-                  await addDoc(collection(db, 'financials'), d);
-                }
-                notify("Dados de teste gerados com sucesso!");
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-50 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all"
-            >
-              Gerar Dados de Teste
+              <FileText size={14} />
+              Importar Extrato (PDF)
             </button>
           </div>
         </div>
@@ -367,7 +109,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
               <tr>
                 <th className="px-8 py-5">Data</th>
                 <th className="px-8 py-5">Tipo</th>
-                <th className="px-8 py-5">Descrição / Categoria</th>
+                <th className="px-8 py-5">Descrição</th>
                 <th className="px-8 py-5 text-right">Valor</th>
               </tr>
             </thead>
@@ -382,10 +124,9 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
                   </td>
                   <td className="px-8 py-5">
                     <p className="font-black text-slate-800 text-sm">{f.description}</p>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{f.category}</p>
                   </td>
                   <td className={`px-8 py-5 text-right font-black ${f.type === 'receita' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {f.type === 'receita' ? '+' : '-'} {formatCurrency(f.value)}
+                    {formatCurrency(f.value)}
                   </td>
                 </tr>
               ))}
@@ -411,30 +152,6 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
                     <input type="radio" name="type" value="despesa" className="hidden peer" />
                     <div className="py-3 text-center rounded-xl text-[10px] font-black uppercase tracking-widest peer-checked:bg-white peer-checked:text-rose-600 transition-all text-slate-400">Despesa</div>
                  </label>
-              </div>
-              <div>
-                <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Descrição</label>
-                <input name="description" required placeholder="Ex: Pagamento Frete" className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Valor (R$)</label>
-                  <input name="value" type="number" step="0.01" required className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Data</label>
-                  <input name="date" type="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold" />
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Categoria</label>
-                <select name="category" className="w-full bg-slate-50 border-none rounded-2xl p-4 font-bold">
-                  <option value="Operacional">Operacional</option>
-                  <option value="Suprimentos">Suprimentos</option>
-                  <option value="Vendas">Vendas</option>
-                  <option value="Impostos">Impostos</option>
-                  <option value="Salários">Salários</option>
-                </select>
               </div>
               <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl">Confirmar Lançamento</button>
             </form>
