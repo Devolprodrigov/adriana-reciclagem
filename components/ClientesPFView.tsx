@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, User, Edit3, Trash2, Mail, Phone, MapPin, CreditCard } from 'lucide-react';
+import { Plus, Edit3, Trash2 } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CustomerPF } from '../types';
@@ -16,7 +16,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Estados controlados para preenchimento automático
+  // Estados controlados para o formulário
   const [zipCode, setZipCode] = useState('');
   const [address, setAddress] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
@@ -25,19 +25,11 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
 
   const handleOpenModal = (customer: CustomerPF | null) => {
     setEditing(customer);
-    if (customer) {
-      setZipCode(customer.zipCode || '');
-      setAddress(customer.address || '');
-      setNeighborhood(customer.neighborhood || '');
-      setCity(customer.city || '');
-      setState(customer.state || '');
-    } else {
-      setZipCode('');
-      setAddress('');
-      setNeighborhood('');
-      setCity('');
-      setState('');
-    }
+    setZipCode(customer?.zipCode || '');
+    setAddress(customer?.address || '');
+    setNeighborhood(customer?.neighborhood || '');
+    setCity(customer?.city || '');
+    setState(customer?.state || '');
     setShowModal(true);
   };
 
@@ -69,40 +61,41 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     
+    // 1. Captura os dados ANTES de fechar o modal
     const customerData = {
       name: (fd.get('name') as string).toUpperCase(),
       cpf: fd.get('cpf') as string,
-      rg: fd.get('rg') as string,
-      birthDate: fd.get('birthDate') as string,
-      email: fd.get('email') as string,
       phone: fd.get('phone') as string,
+      pixKey: fd.get('pixKey') as string,
       zipCode: zipCode,
       address: address,
-      number: fd.get('number') as string,
       neighborhood: neighborhood,
       city: city,
       state: state,
-      pixKey: fd.get('pixKey') as string,
-      status: fd.get('status') as string || 'Ativo',
       updatedAt: new Date().toISOString(),
-      createdAt: editing ? editing.createdAt : new Date().toISOString()
+      createdAt: editing ? editing.createdAt : new Date().toISOString(),
+      status: 'Ativo'
     };
 
     try {
+      // 2. FECHA O MODAL IMEDIATAMENTE (Efeito de velocidade)
+      setShowModal(false);
+      notify("Salvando no sistema...");
+
       if (editing) {
         await updateDoc(doc(db, 'customersPF', editing.id), customerData);
-        notify("Cadastro atualizado com sucesso!");
+        notify("Cadastro atualizado!");
       } else {
         await addDoc(collection(db, 'customersPF'), customerData);
         notify("Cliente cadastrado com sucesso!");
       }
       
-      // SÓ FECHA A TELA SE CHEGAR AQUI (SEM ERRO NO BANCO)
-      setShowModal(false);
       setEditing(null);
     } catch (error) {
       console.error("Erro Firebase:", error);
-      notify("Erro ao salvar no banco de dados. Verifique sua conexão.");
+      notify("ERRO AO SALVAR! A tela será reaberta.");
+      // 3. SE DER ERRO, reabre o modal para o usuário não perder o que digitou
+      setShowModal(true);
     }
   };
 
@@ -112,7 +105,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
       notify("Cliente removido.");
       setDeleteConfirm(null);
     } catch (error) {
-      notify("Erro ao excluir cliente.");
+      notify("Erro ao excluir.");
     }
   };
 
@@ -122,8 +115,9 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {/* HEADER E BUSCA */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Clientes (Pessoa Física)</h3>
+        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Clientes (PF)</h3>
         <div className="flex w-full md:w-auto gap-2">
           <input 
             placeholder="Buscar por nome ou CPF..." 
@@ -136,6 +130,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
         </div>
       </div>
 
+      {/* TABELA */}
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -158,9 +153,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
                     <p className="text-xs font-bold text-slate-600">{c.city} - {c.state}</p>
                     <p className="text-[10px] font-bold text-slate-400 uppercase">{c.neighborhood}</p>
                   </td>
-                  <td className="px-8 py-5 text-xs font-bold text-slate-600">
-                    {c.phone}
-                  </td>
+                  <td className="px-8 py-5 text-xs font-bold text-slate-600">{c.phone}</td>
                   <td className="px-8 py-5 text-right space-x-1">
                     <button onClick={() => handleOpenModal(c)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"><Edit3 size={18}/></button>
                     <button onClick={() => setDeleteConfirm(c.id)} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 size={18}/></button>
@@ -172,6 +165,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
         </div>
       </div>
 
+      {/* MODAL DE CADASTRO */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto">
@@ -195,7 +189,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-2 flex justify-between">
-                    CEP {loadingCep && <span className="animate-spin">...</span>}
+                    CEP {loadingCep && <span className="animate-pulse">Buscando...</span>}
                   </label>
                   <input value={zipCode} onChange={(e) => setZipCode(e.target.value)} onBlur={handleCepBlur} placeholder="00000-000" className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
                 </div>
@@ -216,15 +210,27 @@ const ClientesPFView: React.FC<Props> = ({ customers, notify }) => {
                   <input name="pixKey" defaultValue={editing?.pixKey} className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
                 </div>
               </div>
-              <div className="flex gap-4 pt-6">
-                <button type="submit" className="flex-1 py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl">Confirmar Cadastro</button>
-              </div>
+              <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-indigo-700 transition-all">
+                Confirmar Cadastro
+              </button>
             </form>
           </div>
         </div>
       )}
-      
-      {/* O Modal de exclusão (DeleteConfirm) continua o mesmo do seu código original */}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-[2rem] max-w-sm w-full text-center">
+            <h3 className="text-lg font-black text-slate-800 uppercase mb-2">Excluir Cliente?</h3>
+            <p className="text-slate-500 text-sm font-bold mb-6">Esta ação não pode ser desfeita.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase">Cancelar</button>
+              <button onClick={() => handleDelete(deleteConfirm)} className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-rose-200">Excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

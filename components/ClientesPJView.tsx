@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Building2, Edit3, Trash2, CreditCard, MapPin, Mail, Phone } from 'lucide-react';
+import { Plus, Building2, Edit3, Trash2 } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CustomerPJ } from '../types';
@@ -25,19 +25,11 @@ const ClientesPJView: React.FC<Props> = ({ customers, notify }) => {
 
   const handleOpenModal = (customer: CustomerPJ | null) => {
     setEditing(customer);
-    if (customer) {
-      setZipCode(customer.zipCode || '');
-      setAddress(customer.address || '');
-      setNeighborhood(customer.neighborhood || '');
-      setCity(customer.city || '');
-      setState(customer.state || '');
-    } else {
-      setZipCode('');
-      setAddress('');
-      setNeighborhood('');
-      setCity('');
-      setState('');
-    }
+    setZipCode(customer?.zipCode || '');
+    setAddress(customer?.address || '');
+    setNeighborhood(customer?.neighborhood || '');
+    setCity(customer?.city || '');
+    setState(customer?.state || '');
     setShowModal(true);
   };
 
@@ -69,30 +61,30 @@ const ClientesPJView: React.FC<Props> = ({ customers, notify }) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     
+    // 1. Captura os dados ANTES de fechar o modal
     const companyData = {
       companyName: (fd.get('companyName') as string).toUpperCase(),
-      tradeName: (fd.get('tradeName') as string).toUpperCase(),
+      tradeName: (fd.get('tradeName') as string)?.toUpperCase() || '',
       cnpj: fd.get('cnpj') as string,
-      stateRegistration: fd.get('stateRegistration') as string,
-      municipalRegistration: fd.get('municipalRegistration') as string,
-      foundationDate: fd.get('foundationDate') as string,
-      email: fd.get('email') as string,
       phone: fd.get('phone') as string,
-      contact: fd.get('contact') as string,
+      contact: (fd.get('contact') as string).toUpperCase(),
       zipCode: zipCode,
       address: address,
       number: fd.get('number') as string,
-      complement: fd.get('complement') as string,
       neighborhood: neighborhood,
       city: city,
       state: state,
       pixKey: fd.get('pixKey') as string,
-      status: fd.get('status') as string || 'Ativo',
+      status: 'Ativo',
       updatedAt: new Date().toISOString(),
       createdAt: editing ? editing.createdAt : new Date().toISOString(),
     };
 
     try {
+      // 2. FECHA O MODAL IMEDIATAMENTE (Otimismo na interface)
+      setShowModal(false);
+      notify("Salvando empresa...");
+
       if (editing) {
         await updateDoc(doc(db, 'customersPJ', editing.id), companyData);
         notify("Empresa atualizada com sucesso!");
@@ -101,12 +93,12 @@ const ClientesPJView: React.FC<Props> = ({ customers, notify }) => {
         notify("Empresa cadastrada com sucesso!");
       }
       
-      // SÓ FECHA A TELA SE O FIREBASE RESPONDER COM SUCESSO
-      setShowModal(false);
       setEditing(null);
     } catch (error) {
       console.error("Erro ao salvar PJ:", error);
-      notify("Erro ao salvar no banco de dados. Tente novamente.");
+      notify("ERRO AO GRAVAR! Verifique as regras do Firebase.");
+      // 3. SE DER ERRO, reabre o modal para não perder o que foi digitado
+      setShowModal(true);
     }
   };
 
@@ -122,17 +114,16 @@ const ClientesPJView: React.FC<Props> = ({ customers, notify }) => {
 
   const filteredCustomers = customers.filter(c => 
     c.companyName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.cnpj.includes(searchTerm) ||
-    c.tradeName.toLowerCase().includes(searchTerm.toLowerCase())
+    c.cnpj.includes(searchTerm)
   );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Clientes (Pessoa Jurídica)</h3>
+        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Clientes (PJ)</h3>
         <div className="flex w-full md:w-auto gap-3">
           <input 
-            type="text" 
             placeholder="Buscar por CNPJ ou Nome..." 
             className="flex-1 md:w-64 bg-white border border-slate-200 rounded-2xl px-4 py-3 font-bold text-xs outline-none focus:ring-2 ring-indigo-100"
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -143,6 +134,7 @@ const ClientesPJView: React.FC<Props> = ({ customers, notify }) => {
         </div>
       </div>
 
+      {/* TABELA */}
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -180,71 +172,76 @@ const ClientesPJView: React.FC<Props> = ({ customers, notify }) => {
         </div>
       </div>
 
+      {/* MODAL PJ */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-3xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto">
             <div className="p-8 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
               <h2 className="text-xl font-black text-slate-800 flex items-center gap-3"><Building2 className="text-indigo-600" /> Cadastro de Empresa</h2>
-              <button onClick={() => setShowModal(false)} className="font-black text-slate-300 hover:text-slate-600 uppercase text-xs">Fechar</button>
+              <button onClick={() => setShowModal(false)} className="font-black text-slate-300 hover:text-slate-600 uppercase text-[10px]">FECHAR</button>
             </div>
             <form onSubmit={handleSave} className="p-10 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Razão Social</label>
-                  <input name="companyName" defaultValue={editing?.companyName} required className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
+                  <input name="companyName" defaultValue={editing?.companyName} required className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">CNPJ</label>
-                  <input name="cnpj" defaultValue={editing?.cnpj} required placeholder="00.000.000/0000-00" className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
+                  <input name="cnpj" defaultValue={editing?.cnpj} required placeholder="00.000.000/0000-00" className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Responsável</label>
-                  <input name="contact" defaultValue={editing?.contact} required className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
+                  <input name="contact" defaultValue={editing?.contact} required className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Telefone</label>
-                  <input name="phone" defaultValue={editing?.phone} required className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
+                  <input name="phone" defaultValue={editing?.phone} required className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-2 flex justify-between">
-                    CEP {loadingCep && <span className="animate-spin">...</span>}
+                    CEP {loadingCep && <span className="animate-pulse">Buscando...</span>}
                   </label>
-                  <input value={zipCode} onChange={(e) => setZipCode(e.target.value)} onBlur={handleCepBlur} placeholder="00000-000" className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
+                  <input value={zipCode} onChange={(e) => setZipCode(e.target.value)} onBlur={handleCepBlur} placeholder="00000-000" className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
                 </div>
                 <div className="md:col-span-2">
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Endereço</label>
-                  <input value={address} onChange={(e) => setAddress(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
+                  <input value={address} onChange={(e) => setAddress(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Bairro</label>
-                  <input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
+                  <input value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
                 </div>
                 <div>
                   <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Cidade</label>
-                  <input value={city} onChange={(e) => setCity(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
+                  <input value={city} onChange={(e) => setCity(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Chave PIX (Empresa)</label>
-                  <input name="pixKey" defaultValue={editing?.pixKey} className="w-full bg-slate-50 p-4 rounded-2xl font-bold" />
+                    <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Nº</label>
+                    <input name="number" defaultValue={editing?.number} className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 block mb-2">Chave PIX</label>
+                  <input name="pixKey" defaultValue={editing?.pixKey} className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none focus:ring-2 ring-indigo-100" />
                 </div>
               </div>
-              <div className="flex gap-4 pt-6">
-                <button type="submit" className="flex-1 py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-indigo-700 transition-all">Salvar Empresa</button>
-              </div>
+              <button type="submit" className="w-full py-5 bg-indigo-600 text-white rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-indigo-700 transition-all">
+                Confirmar Cadastro
+              </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* O Modal de exclusão (DeleteConfirm) aparece quando você clica na lixeira */}
+      {/* DELETE CONFIRM */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-10 shadow-2xl text-center">
-            <h3 className="text-xl font-black text-slate-800 mb-2">Remover Empresa?</h3>
+            <h3 className="text-xl font-black text-slate-800 mb-2 uppercase">Remover Empresa?</h3>
             <p className="text-sm font-bold text-slate-400 mb-8">Esta ação não poderá ser desfeita no sistema.</p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-[10px]">Não</button>
-              <button onClick={() => handleDelete(deleteConfirm)} className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black uppercase text-[10px]">Sim, Excluir</button>
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-[10px]">Cancelar</button>
+              <button onClick={() => handleDelete(deleteConfirm)} className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-lg shadow-rose-200">Sim, Excluir</button>
             </div>
           </div>
         </div>

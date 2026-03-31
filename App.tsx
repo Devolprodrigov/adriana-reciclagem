@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingCart, DollarSign, FileText, 
   Scale, User, Briefcase, Sparkles, CheckCircle2, Menu, X, Truck,
-  LogIn, LogOut
+  LogOut
 } from 'lucide-react';
 import { 
   auth, db, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, FirebaseUser,
@@ -19,7 +19,7 @@ import FinanceiroView from './components/FinanceiroView';
 import NFView from './components/NFView';
 import MTRView from './components/MTRView';
 import AIInsightsView from './components/AIInsightsView';
-import { seedProducts } from './src/seedProducts'; // Importação do seu script de carga
+import { seedProducts } from './src/seedProducts';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
@@ -36,7 +36,6 @@ const App: React.FC = () => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
-  // Monitora o estado de autenticação
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -45,20 +44,25 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Monitora os dados do Firestore quando o usuário está logado
   useEffect(() => {
     if (!user) return;
 
     testConnection();
-    
-    // PASSO 1: DISPARA A CARGA DOS PRODUTOS DA ADRIANA
-    // Isso roda uma vez sempre que você logar ou der refresh.
     seedProducts();
 
+    // Lógica robusta para carregar produtos
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as any;
+      if (snapshot.empty) {
+        console.log("Nenhum produto encontrado no banco.");
+      }
+      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Product[];
       setProducts(data);
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'products'));
+    }, (error) => {
+      console.error("Erro ao ler produtos:", error);
+      notify("Erro de conexão com o catálogo.");
+      // Mantém o tratamento de erro original como fallback
+      handleFirestoreError(error, OperationType.GET, 'products');
+    });
 
     const unsubPF = onSnapshot(collection(db, 'customersPF'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as any;
