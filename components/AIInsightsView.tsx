@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { Sparkles, BrainCircuit, RefreshCw, ChevronRight, TrendingUp, AlertCircle, Target, Wallet, Package } from 'lucide-react';
 import { FinancialRecord, Product } from '../types';
-
+import { GoogleGenerativeAI } from '@google/generative-ai'; // Import correto
 
 interface Props {
   financials: FinancialRecord[];
@@ -11,53 +10,49 @@ interface Props {
 
 const AIInsightsView: React.FC<Props> = ({ financials, products }) => {
   const [insight, setInsight] = useState<string>("");
-  const [financialHealth, setFinancialHealth] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
 
+  // Use VITE_ se estiver usando Vite, ou garanta que a chave está no .env
+  const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+
   const generateInsights = async () => {
+    if (!API_KEY) {
+      setInsight("Erro: Chave de API não configurada no ambiente.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const genAI = new GoogleGenerativeAI(API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Versão estável e rápida
       
       const stats = {
         receita: financials.filter(f => f.type === 'receita').reduce((a, b) => a + b.value, 0),
         despesa: financials.filter(f => f.type === 'despesa').reduce((a, b) => a + b.value, 0),
-        saldo: 0
       };
-      stats.saldo = stats.receita - stats.despesa;
+      const saldo = stats.receita - stats.despesa;
 
-      const prompt = `Como um consultor de inteligência industrial sênior especializado no mercado de reciclagem de metais e sucatas (ADRIANA RECICLAGEM), analise os dados abaixo e forneça:
-      1. TRÊS INSIGHTS ESTRATÉGICOS: Curtos, diretos e acionáveis (máximo 2 frases cada).
-      2. RESUMO DE SAÚDE FINANCEIRA: Uma análise breve do fluxo de caixa atual.
-      3. RECOMENDAÇÃO DE ESTOQUE: Qual material focar ou liquidar.
+      const prompt = `Você é o consultor de estratégia da ADRIANA RECICLAGEM.
+      Analise estes dados reais do pátio e finanças:
 
-      Dados Financeiros Recentes: ${JSON.stringify(financials.slice(-15))}
-      Resumo Financeiro Total: Receita ${stats.receita}, Despesa ${stats.despesa}, Saldo ${stats.saldo}
-      Dados de Estoque: ${JSON.stringify(products.map(p => ({ nome: p.name, qtd: p.stock, min: p.minStock })))}
+      FINANCEIRO: Receita Total R$${stats.receita}, Despesa R$${stats.despesa}, Saldo R$${saldo}.
+      Últimas transações: ${JSON.stringify(financials.slice(0, 10))}
+
+      ESTOQUE ATUAL: ${JSON.stringify(products.map(p => ({ nome: p.name, qtd: p.stock, min: p.minStock })))}
       
-      Responda em português, com tom profissional e focado em lucro e eficiência operacional.
-      Use o formato:
-      ### Insights Estratégicos
-      * [Insight 1]
-      * [Insight 2]
-      * [Insight 3]
-      
-      ### Saúde Financeira
-      [Texto aqui]
-      
-      ### Recomendação de Estoque
-      [Texto aqui]`;
+      REGRAS DE RESPOSTA:
+      1. Divida em 3 seções: "Insights Estratégicos", "Saúde Financeira" e "Recomendação de Estoque".
+      2. Seja direto e use tom profissional de dono de empresa de reciclagem.
+      3. Não use introduções como "Aqui está sua análise". Comece direto nos tópicos.
+      4. Use formatação de tópicos limpa.`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-      });
-
-      const text = response.text || "Não foi possível gerar insights no momento.";
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
       setInsight(text);
     } catch (error) {
-      console.error(error);
-      setInsight("Erro ao conectar com a IA da IronCore. Verifique sua chave de API.");
+      console.error("Erro na IA:", error);
+      setInsight("Erro ao conectar com o Cérebro IronCore. Verifique a conexão e a API Key.");
     } finally {
       setLoading(false);
     }
@@ -67,111 +62,111 @@ const AIInsightsView: React.FC<Props> = ({ financials, products }) => {
     if (financials.length > 0 || products.length > 0) {
       generateInsights();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
-      <div className="bg-indigo-600 rounded-[3rem] p-12 text-white relative overflow-hidden shadow-2xl shadow-indigo-200">
-        <div className="absolute top-0 right-0 p-10 opacity-10">
-          <Sparkles size={200} />
+      {/* Banner Principal */}
+      <div className="bg-indigo-600 rounded-[3rem] p-10 text-white relative overflow-hidden shadow-2xl shadow-indigo-100">
+        <div className="absolute top-0 right-0 p-10 opacity-10 rotate-12">
+          <BrainCircuit size={200} />
         </div>
         <div className="relative z-10 max-w-2xl">
-          <div className="flex items-center gap-3 mb-6">
+          <div className="flex items-center gap-3 mb-4">
             <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">
-              <BrainCircuit size={24} className="text-white" />
+              <Sparkles size={24} className="text-amber-300" />
             </div>
-            <h2 className="text-3xl font-black tracking-tight uppercase">Cérebro IronCore v2.0</h2>
+            <h2 className="text-2xl font-black tracking-tight uppercase">Cérebro IronCore v2.5</h2>
           </div>
-          <p className="text-indigo-100 font-bold mb-8 leading-relaxed text-lg">
-            Análise avançada de fluxo de caixa e gestão de pátio. Nossa IA identifica gargalos financeiros e oportunidades de mercado em tempo real.
+          <p className="text-indigo-100 font-bold mb-8 leading-relaxed">
+            Análise preditiva de mercado e gestão de pátio. Nossa inteligência identifica oportunidades de lucro no setor de reciclagem em tempo real.
           </p>
           <button 
             onClick={generateInsights}
             disabled={loading}
-            className="bg-white text-indigo-600 px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-2 hover:bg-indigo-50 transition-all shadow-xl hover:scale-105 active:scale-95"
+            className="bg-white text-indigo-600 px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-2 hover:bg-indigo-50 transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
           >
-            {loading ? <RefreshCw className="animate-spin" size={16} /> : <Sparkles size={16} />}
-            {loading ? 'Processando Inteligência...' : 'Recalcular Estratégia'}
+            {loading ? <RefreshCw className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+            {loading ? 'Analisando Dados...' : 'Recalcular Estratégia'}
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 opacity-50"></div>
-            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
-              <Target size={16} className="text-indigo-600"/> Relatório de Inteligência
+        {/* Coluna da Esquerda: Insights Gerados */}
+        <div className="lg:col-span-2">
+          <div className="bg-white rounded-[2.5rem] p-10 border border-slate-100 shadow-sm min-h-[500px]">
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2">
+              <Target size={16} className="text-indigo-600"/> Relatório de Inteligência Gerencial
             </h3>
+
             {loading ? (
-              <div className="space-y-6">
-                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-3/4"></div>
-                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-1/2"></div>
-                <div className="h-4 bg-slate-100 rounded-full animate-pulse w-2/3"></div>
-                <div className="pt-8 space-y-4">
-                  <div className="h-20 bg-slate-50 rounded-3xl animate-pulse"></div>
-                  <div className="h-20 bg-slate-50 rounded-3xl animate-pulse"></div>
+              <div className="space-y-8">
+                <div className="space-y-3">
+                  <div className="h-6 bg-slate-100 rounded-full animate-pulse w-1/4"></div>
+                  <div className="h-20 bg-slate-50 rounded-3xl animate-pulse w-full"></div>
+                </div>
+                <div className="space-y-3">
+                  <div className="h-6 bg-slate-100 rounded-full animate-pulse w-1/3"></div>
+                  <div className="h-20 bg-slate-50 rounded-3xl animate-pulse w-full"></div>
                 </div>
               </div>
             ) : (
-              <div className="prose prose-slate max-w-none">
-                <div className="text-slate-600 font-medium leading-relaxed whitespace-pre-line ai-content">
-                  {insight.split('###').map((section, idx) => {
+              <div className="space-y-8">
+                {insight ? (
+                  insight.split(/(?=###|Insights Estratégicos|Saúde Financeira|Recomendação de Estoque)/g).map((section, idx) => {
                     if (!section.trim()) return null;
-                    const lines = section.trim().split('\n');
-                    const title = lines[0];
-                    const content = lines.slice(1).join('\n');
-                    
+                    const cleanTitle = section.split('\n')[0].replace(/###/g, '').trim();
+                    const cleanContent = section.split('\n').slice(1).join('\n').trim();
+
                     return (
-                      <div key={idx} className="mb-8 last:mb-0">
-                        <h4 className="text-slate-900 font-black uppercase tracking-tight text-lg mb-4 flex items-center gap-2">
-                          {title.includes('Insights') && <Sparkles size={18} className="text-amber-500"/>}
-                          {title.includes('Financeira') && <Wallet size={18} className="text-emerald-500"/>}
-                          {title.includes('Estoque') && <Package size={18} className="text-blue-500"/>}
-                          {title}
+                      <div key={idx} className="group">
+                        <h4 className="text-slate-900 font-black uppercase tracking-tight text-md mb-4 flex items-center gap-2">
+                          {cleanTitle.includes('Insights') && <TrendingUp size={18} className="text-amber-500"/>}
+                          {cleanTitle.includes('Saúde') && <Wallet size={18} className="text-emerald-500"/>}
+                          {cleanTitle.includes('Estoque') && <Package size={18} className="text-blue-500"/>}
+                          {cleanTitle}
                         </h4>
-                        <div className="bg-slate-50/50 p-6 rounded-3xl border border-slate-100/50">
-                          {content}
+                        <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 group-hover:border-indigo-100 transition-colors whitespace-pre-line text-slate-600 font-bold text-sm leading-relaxed">
+                          {cleanContent}
                         </div>
                       </div>
                     );
-                  })}
-                  {!insight && <p className="text-slate-400 italic">Clique em "Recalcular Estratégia" para começar.</p>}
-                </div>
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <BrainCircuit size={48} className="text-slate-200 mb-4" />
+                    <p className="text-slate-400 font-bold max-w-xs">Clique no botão acima para que a IA analise seus dados atuais.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
 
+        {/* Coluna da Direita: Cards Fixos/Dicas */}
         <div className="space-y-6">
-          <div className="bg-emerald-600 rounded-[2.5rem] p-8 text-white shadow-lg shadow-emerald-100">
-            <div className="flex items-center gap-2 mb-4">
-              <TrendingUp size={18} className="opacity-80"/>
-              <h4 className="font-black text-xs uppercase tracking-widest opacity-80">Mercado de Metais</h4>
-            </div>
-            <p className="text-sm font-bold mb-6 leading-relaxed">O mercado de Cobre teve alta de 4.2% em LME hoje. Sugerimos priorizar a venda do estoque acumulado para maximizar margem.</p>
-            <button className="w-full py-4 bg-white/20 hover:bg-white/30 transition-colors rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-              Análise de Commodities <ChevronRight size={14}/>
-            </button>
-          </div>
-
-          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-lg shadow-slate-200">
+          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white">
             <div className="flex items-center gap-2 mb-4">
               <AlertCircle size={18} className="text-amber-400"/>
-              <h4 className="font-black text-xs uppercase tracking-widest opacity-60">Risco Operacional</h4>
+              <h4 className="font-black text-[10px] uppercase tracking-widest opacity-60">Alerta de Giro</h4>
             </div>
-            <p className="text-sm font-bold mb-6 leading-relaxed">Detectamos 3 itens abaixo do estoque de segurança. Risco de perda de vendas por falta de material para processamento.</p>
-            <button className="w-full py-4 bg-white/20 hover:bg-white/30 transition-colors rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-              Plano de Reposição <ChevronRight size={14}/>
-            </button>
+            <p className="text-sm font-bold leading-relaxed mb-6">
+              O estoque de Alumínio está 20% acima da média histórica. Considere uma venda em lote para liberar capital de giro.
+            </p>
+            <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-amber-400 w-3/4"></div>
+            </div>
           </div>
 
           <div className="bg-indigo-50 rounded-[2.5rem] p-8 border border-indigo-100">
-            <h4 className="font-black text-[10px] uppercase tracking-widest text-indigo-400 mb-4">Dica do Cérebro</h4>
-            <p className="text-xs font-bold text-indigo-900 leading-relaxed">
-              "Manter um saldo de caixa 15% superior às despesas fixas mensais garante fôlego para compras de oportunidade em grandes lotes de sucata."
-            </p>
+             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white mb-4">
+                <Sparkles size={20} />
+             </div>
+             <h4 className="font-black text-xs uppercase text-indigo-900 mb-2">Dica IronCore</h4>
+             <p className="text-xs font-bold text-indigo-600 leading-relaxed">
+               "Lotes de Metais Nobres (Cobre/Latão) devem ter prioridade de pesagem na entrada para evitar divergências financeiras no fechamento."
+             </p>
           </div>
         </div>
       </div>

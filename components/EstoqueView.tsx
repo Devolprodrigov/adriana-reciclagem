@@ -1,9 +1,8 @@
-
 import React, { useState } from 'react';
-import { Search, Scale, AlertCircle, ArrowUp, ArrowDown, Plus, Box } from 'lucide-react';
+import { Search, Scale, AlertCircle, ArrowUp, Plus, Box } from 'lucide-react';
 import { Product } from '../types';
 import { db } from '../firebase';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, increment } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../src/lib/db';
 
 interface Props {
@@ -14,14 +13,34 @@ interface Props {
 const EstoqueView: React.FC<Props> = ({ products, notify }) => {
   const [q, setQ] = useState('');
   const [showModal, setShowModal] = useState(false);
+  // Estado para controlar os inputs de cada card individualmente
+  const [weights, setWeights] = useState<{ [key: string]: string }>({});
 
-  const handleUpdateStock = async (id: string, val: number) => {
+  // Função para atualizar o peso (Incremento)
+  const handleAddStock = async (productId: string) => {
+    const weightValue = weights[productId];
+    
+    if (!weightValue || isNaN(Number(weightValue)) || Number(weightValue) <= 0) {
+      notify("Insira um peso válido para adicionar.");
+      return;
+    }
+
     try {
-      const productRef = doc(db, 'products', id);
-      await updateDoc(productRef, { stock: val });
-      notify("Estoque atualizado com sucesso.");
+      const productRef = doc(db, 'products', productId);
+      
+      // O increment() soma o novo peso ao valor atual no Firestore de forma atômica
+      await updateDoc(productRef, {
+        stock: increment(Number(weightValue)),
+        updatedAt: new Date().toISOString()
+      });
+
+      notify(`+${weightValue}kg adicionados com sucesso!`);
+      
+      // Limpa o input deste produto específico
+      setWeights(prev => ({ ...prev, [productId]: '' }));
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `products/${id}`);
+      console.error("Erro ao salvar peso:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `products/${productId}`);
     }
   };
 
@@ -109,14 +128,14 @@ const EstoqueView: React.FC<Props> = ({ products, notify }) => {
                  <input 
                   type="number" 
                   placeholder="KG"
-                  onBlur={(e) => {
-                    const val = Number(e.target.value);
-                    if (e.target.value !== "") handleUpdateStock(p.id, val);
-                    e.target.value = "";
-                  }}
+                  value={weights[p.id] || ''}
+                  onChange={(e) => setWeights({ ...weights, [p.id]: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 px-4 text-center font-black focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                  />
-                 <button className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-50">
+                 <button 
+                  onClick={() => handleAddStock(p.id)}
+                  className="p-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-50"
+                 >
                    <ArrowUp size={16}/>
                  </button>
                </div>
