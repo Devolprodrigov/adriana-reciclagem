@@ -1,25 +1,70 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { getFirestore, collection, addDoc, getDocs, onSnapshot, query, orderBy, doc, setDoc, updateDoc, deleteDoc, getDocFromServer, getDoc } from 'firebase/firestore';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut, 
+  onAuthStateChanged, 
+  User as FirebaseUser 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  getDocs, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDocFromServer, 
+  getDoc 
+} from 'firebase/firestore';
 
-// Initialize Firebase
+// 1. Configuração Centralizada
+// Certifique-se de que no .env.local os nomes comecem com VITE_
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET, // Adicionado
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID, // Adicionado
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+// Log de depuração rápido (remova em produção se desejar)
+if (!firebaseConfig.apiKey) {
+  console.warn("⚠️ Firebase: Chave de API não encontrada. Verifique suas variáveis de ambiente.");
+}
+
+// 2. Inicialização
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, import.meta.env.VITE_FIREBASE_DATABASE_ID || '(default)');
+export const db = getFirestore(app);
 export const auth = getAuth(app);
+
+// 3. Exportações de Autenticação
 export { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged };
 export type { FirebaseUser };
 
-// Re-export Firestore functions
-export { collection, addDoc, getDocs, onSnapshot, query, orderBy, doc, setDoc, updateDoc, deleteDoc, getDocFromServer, getDoc };
+// 4. Re-export de funções do Firestore para uso simplificado nos componentes
+export { 
+  collection, 
+  addDoc, 
+  getDocs, 
+  onSnapshot, 
+  query, 
+  orderBy, 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDocFromServer, 
+  getDoc 
+};
 
-// Error handling for Firestore
+// 5. Tratamento de Erros e Tipagem
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -33,50 +78,31 @@ export interface FirestoreErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
+  authInfo: any; // Simplificado para evitar erros de tipagem profunda
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
+    operationType,
+    path,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
+      providerInfo: auth.currentUser?.providerData.map(p => p.providerId) || []
+    }
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.error('🔴 Erro no Firestore:', errInfo);
+  throw new Error(`Erro na operação ${operationType}: ${errInfo.error}`);
 }
 
+// 6. Teste de Conexão
 export async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    const testRef = doc(db, 'test', 'connection');
+    await getDocFromServer(testRef);
+    console.log("✅ Conexão com Firebase estabelecida com sucesso!");
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-    }
+    console.error("❌ Falha na conexão com Firebase. Verifique as chaves e permissões.");
   }
 }
