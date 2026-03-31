@@ -104,22 +104,38 @@ const productsToSeed = [
 
 export async function seedProducts() {
   try {
-    console.log('Iniciando carga completa dos 78 produtos...');
+    const productsRef = collection(db, 'products');
     
-    for (const product of productsToSeed) {
-      const docRef = doc(db, 'products', product.code); 
-      await setDoc(docRef, {
+    // 1. Verifica se já existe algum dado para não rodar em loop eterno
+    const snapshot = await getDocs(query(productsRef, limit(1)));
+    
+    if (!snapshot.empty) {
+      console.log('📦 Catálogo já carregado no Firestore.');
+      return;
+    }
+
+    console.log('🚀 Iniciando carga dos 78 produtos da Adriana...');
+    
+    // 2. Cria as promessas para salvar tudo em paralelo (MUITO mais rápido)
+    const seedPromises = productsToSeed.map((product) => {
+      // Usamos o 'code' como o ID do documento para ser único e organizado
+      const docRef = doc(db, 'products', String(product.code));
+      
+      return setDoc(docRef, {
         ...product,
+        code: String(product.code),
         stock: 0,
         minStock: 0,
         costPrice: 0,
         sellPrice: 0,
         updatedAt: new Date().toISOString()
       }, { merge: true });
-    }
-    
-    console.log('✅ CATÁLOGO COMPLETO CARREGADO COM SUCESSO!');
+    });
+
+    await Promise.all(seedPromises);
+    console.log('✅ CATÁLOGO DA ADRIANA CARREGADO COM SUCESSO!');
+
   } catch (error) {
-    console.error('❌ Erro na carga:', error);
+    console.error('❌ Erro crítico na carga de produtos:', error);
   }
 }
