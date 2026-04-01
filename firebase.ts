@@ -24,15 +24,15 @@ import {
 } from 'firebase/firestore';
 
 // ===============================================================
-// 1. CONFIGURAÇÃO DIRETA (RESOLVE O ERRO DE CONEXÃO NA VERCEL)
+// 1. CONFIGURAÇÃO REAL (Extraída do seu print do Firebase)
 // ===============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyA4Qx_Lz4p-Qxa1k5t0y-tstrodrigovieira", // Chave extraída do seu domínio Vercel
-  authDomain: "adriana-reciclagem.firebaseapp.com",
-  projectId: "adriana-reciclagem",
-  storageBucket: "adriana-reciclagem.appspot.com",
-  messagingSenderId: "1056586326632", 
-  appId: "1:1056586326632:web:6308s-projects"
+  apiKey: "AIzaSyDhzhUtiul_KbV9vW3_Vb2owWr89NBxEaU",
+  authDomain: "gen-lang-client-0910721167.firebaseapp.com",
+  projectId: "gen-lang-client-0910721167",
+  storageBucket: "gen-lang-client-0910721167.firebasestorage.app",
+  messagingSenderId: "542066404894",
+  appId: "1:542066404894:web:c74f59d1badc954c7e080f"
 };
 
 // ===============================================================
@@ -62,7 +62,7 @@ export {
   getDoc 
 };
 
-// 5. TIPAGEM E TRATAMENTO DE ERROS
+// 5. TRATAMENTO DE ERROS
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -75,24 +75,16 @@ export enum OperationType {
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errorMessage = error instanceof Error ? error.message : String(error);
   console.error(`🔴 Erro no Firestore [${operationType}] em [${path}]:`, errorMessage);
-  
-  // Se for erro de permissão, avisa o usuário de forma clara
-  if (errorMessage.includes('permission-denied')) {
-    return "Você não tem permissão para realizar esta ação. Verifique se está logado com o e-mail correto.";
-  }
-  
   return errorMessage;
 }
 
-// 6. TESTE DE CONEXÃO AUTOMÁTICO
+// 6. TESTE DE CONEXÃO
 export async function testConnection() {
   try {
-    console.log("Iniciando teste de conexão...");
-    // Tenta ler um documento qualquer para validar a chave
     const testRef = doc(db, 'products', '1'); 
     await getDoc(testRef);
-    console.log("✅ CONEXÃO ESTABELECIDA: Sistema Adriana Reciclagem pronto.");
+    console.log("✅ CONEXÃO ESTABELECIDA: Projeto Adriana Online!");
   } catch (error) {
-    console.error("❌ ERRO CRÍTICO: O Firebase recusou a conexão. Verifique as chaves no código.");
+    console.error("❌ ERRO: Verifique se o domínio vercel.app está autorizado no Firebase.");
   }
 }
