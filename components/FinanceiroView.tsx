@@ -16,10 +16,10 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Stats calculados em tempo real com garantia de Number
+  // Stats calculados em tempo real
   const stats = {
-    revenue: financials.filter(f => f.type === 'receita').reduce((a, b) => a + Number(b.value), 0),
-    expense: financials.filter(f => f.type === 'despesa').reduce((a, b) => a + Number(b.value), 0),
+    revenue: financials.filter(f => f.type === 'receita').reduce((a, b) => a + Number(b.value || 0), 0),
+    expense: financials.filter(f => f.type === 'despesa').reduce((a, b) => a + Number(b.value || 0), 0),
   };
 
   // --- LÓGICA DE IMPORTAÇÃO DE PDF ---
@@ -30,7 +30,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
     const pdfjsLib = (window as any)['pdfjs-dist/build/pdf'] || (window as any).pdfjsLib;
     
     if (!pdfjsLib) {
-      notify("O motor de PDF está carregando. Tente novamente.");
+      notify("Motor de PDF carregando... Tente em instantes.");
       return;
     }
 
@@ -76,7 +76,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         notify(`Sucesso! ${importedCount} lançamentos importados.`);
       } catch (err) {
         console.error("Erro no PDF:", err);
-        notify("Erro ao processar o arquivo.");
+        notify("Erro ao processar arquivo.");
       } finally {
         setIsProcessing(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -85,39 +85,50 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
     reader.readAsArrayBuffer(file);
   };
 
-  // --- LÓGICA DE SALVAMENTO MANUAL AJUSTADA ---
+  // --- LÓGICA DE SALVAMENTO MANUAL CORRIGIDA (SEM TRAVAMENTO) ---
   const handleAddRecord = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isProcessing) return;
 
     setIsProcessing(true);
-    const fd = new FormData(e.currentTarget);
     
-    // Pegamos os valores garantindo o tipo correto
-    const typeValue = fd.get('type') as 'receita' | 'despesa';
-    const rawValue = fd.get('value');
-
-    const payload = {
-      type: typeValue,
-      description: (fd.get('description') as string).toUpperCase(),
-      value: Math.abs(Number(rawValue)), // Garante que o valor é positivo no banco
-      category: (fd.get('category') as string || 'GERAL').toUpperCase(),
-      date: fd.get('date') as string,
-      status: 'pago',
-      createdAt: serverTimestamp()
-    };
-
     try {
-      // Grava no Firestore
+      const formData = new FormData(e.currentTarget);
+      
+      const type = formData.get('type') as 'receita' | 'despesa' || 'receita';
+      const description = (formData.get('description')?.toString() || "LANÇAMENTO").toUpperCase();
+      const category = (formData.get('category')?.toString() || "GERAL").toUpperCase();
+      const value = Math.abs(Number(formData.get('value'))) || 0;
+      const date = formData.get('date')?.toString() || new Date().toISOString().split('T')[0];
+
+      if (value <= 0) {
+        notify("Insira um valor maior que zero!");
+        setIsProcessing(false);
+        return;
+      }
+
+      const payload = {
+        type,
+        description,
+        value,
+        category,
+        date,
+        status: 'pago',
+        createdAt: serverTimestamp()
+      };
+
+      // Tenta gravar no Firestore (Projeto 0910721167)
       await addDoc(collection(db, 'financials'), payload);
       
       setShowModal(false); 
       notify("Lançamento financeiro salvo!");
-      e.currentTarget.reset(); // Limpa o formulário
-    } catch (error) {
-      console.error("Erro ao salvar manual:", error);
-      notify("Erro ao gravar no banco. Verifique sua conexão.");
+      e.currentTarget.reset();
+
+    } catch (error: any) {
+      console.error("ERRO AO SALVAR:", error);
+      notify(`Erro: ${error.message || "Falha na conexão"}`);
     } finally {
+      // GARANTE QUE O BOTÃO VOLTE AO NORMAL MESMO EM CASO DE ERRO
       setIsProcessing(false);
     }
   };
@@ -127,19 +138,19 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Financeiro Industrial</h3>
-          <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Gestão Adriana Reciclagem</p>
+          <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Adriana Reciclagem</p>
         </div>
         <div className="flex gap-3 w-full md:w-auto">
           <input type="file" ref={fileInputRef} onChange={handlePDFImport} accept=".pdf" className="hidden" />
           <button 
             onClick={() => fileInputRef.current?.click()}
             disabled={isProcessing}
-            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-indigo-600 hover:text-indigo-600 transition-all disabled:opacity-50"
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:border-indigo-600 transition-all disabled:opacity-50"
           >
             {isProcessing ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
             {isProcessing ? 'PROCESSANDO...' : 'IMPORTAR PDF'}
           </button>
-          <button onClick={() => setShowModal(true)} className="flex-1 md:flex-none bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">
+          <button onClick={() => setShowModal(true)} className="flex-1 md:flex-none bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase flex items-center justify-center gap-2 shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">
             <Plus size={16}/> NOVO LANÇAMENTO
           </button>
         </div>
@@ -208,8 +219,8 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
                     <input type="radio" name="type" value="despesa" className="hidden" /> Despesa
                  </label>
               </div>
-              <input name="description" required placeholder="O QUE FOI VENDIDO/COMPRADO?" className="w-full bg-slate-50 p-5 rounded-2xl font-black text-xs uppercase outline-none focus:ring-2 ring-indigo-100" />
-              <input name="category" placeholder="CATEGORIA (EX: SUCATA, OPERACIONAL)" className="w-full bg-slate-50 p-5 rounded-2xl font-black text-xs uppercase outline-none focus:ring-2 ring-indigo-100" />
+              <input name="description" required placeholder="DESCRIÇÃO" className="w-full bg-slate-50 p-5 rounded-2xl font-black text-xs uppercase outline-none focus:ring-2 ring-indigo-100" />
+              <input name="category" placeholder="CATEGORIA (SUCATA, PEÇAS, ETC)" className="w-full bg-slate-50 p-5 rounded-2xl font-black text-xs uppercase outline-none focus:ring-2 ring-indigo-100" />
               <div className="grid grid-cols-2 gap-4">
                 <input name="value" type="number" step="0.01" required placeholder="VALOR R$" className="w-full bg-slate-50 p-5 rounded-2xl font-black text-xs outline-none" />
                 <input name="date" type="date" required defaultValue={new Date().toISOString().split('T')[0]} className="w-full bg-slate-50 p-5 rounded-2xl font-black text-xs outline-none" />
