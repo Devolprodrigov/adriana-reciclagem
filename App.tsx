@@ -5,7 +5,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { 
-  auth, db, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, FirebaseUser,
+  auth, db, GoogleAuthProvider, signInWithRedirect, signOut, onAuthStateChanged, FirebaseUser,
   collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, testConnection
 } from './firebase';
 import { Product, CustomerPF, CustomerPJ, FinancialRecord, ActiveTab } from './types';
@@ -50,17 +50,10 @@ const App: React.FC = () => {
     testConnection();
     seedProducts();
 
-    // Lógica robusta para carregar produtos
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      if (snapshot.empty) {
-        console.log("Nenhum produto encontrado no banco.");
-      }
       const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Product[];
       setProducts(data);
     }, (error) => {
-      console.error("Erro ao ler produtos:", error);
-      notify("Erro de conexão com o catálogo.");
-      // Mantém o tratamento de erro original como fallback
       handleFirestoreError(error, OperationType.GET, 'products');
     });
 
@@ -94,10 +87,11 @@ const App: React.FC = () => {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      // MUDANÇA AQUI: Usando Redirect para evitar bloqueio do navegador
+      await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Erro ao fazer login:", error);
-      notify("Erro ao fazer login com Google.");
+      notify("Erro ao iniciar login.");
     }
   };
 
@@ -129,33 +123,33 @@ const App: React.FC = () => {
         <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10 text-center">
           <div className="w-20 h-20 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-4xl mx-auto mb-8 shadow-lg shadow-indigo-200">A</div>
           <h1 className="text-3xl font-black text-slate-800 tracking-tight mb-2">Bem-vindo à Adriana</h1>
-          <p className="text-slate-500 font-medium mb-10">Reciclagem & Gestão Industrial</p>
+          <p className="text-slate-500 font-medium mb-10 text-sm uppercase tracking-widest">Reciclagem & Gestão Industrial</p>
           
           <button 
             onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 text-slate-700 font-bold py-4 px-6 rounded-2xl hover:bg-slate-50 transition-all active:scale-[0.98] shadow-sm"
+            className="w-full flex items-center justify-center gap-3 bg-slate-900 text-white font-black py-5 px-6 rounded-2xl hover:bg-slate-800 transition-all active:scale-[0.98] shadow-xl text-xs uppercase tracking-widest"
           >
-            <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+            <img src="https://www.google.com/favicon.ico" className="w-5 h-5 brightness-200" alt="Google" />
             Entrar com Google
           </button>
           
-          <p className="mt-8 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Acesso Restrito a Colaboradores</p>
+          <p className="mt-8 text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">Acesso Restrito a Colaboradores</p>
         </div>
       </div>
     );
   }
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20}/>, color: 'hover:bg-indigo-50 hover:text-indigo-600' },
-    { id: 'produtos', label: 'Catálogo', icon: <Package size={20}/>, color: 'hover:bg-blue-50 hover:text-blue-600' },
-    { id: 'estoque', label: 'Estoque', icon: <Scale size={20}/>, color: 'hover:bg-amber-50 hover:text-amber-600' },
-    { id: 'pf-clientes', label: 'Clientes PF', icon: <User size={20}/>, color: 'hover:bg-emerald-50 hover:text-emerald-600' },
-    { id: 'pj-clientes', label: 'Empresas PJ', icon: <Briefcase size={20}/>, color: 'hover:bg-cyan-50 hover:text-cyan-600' },
-    { id: 'pedidos', label: 'Novo Pedido', icon: <ShoppingCart size={20}/>, color: 'hover:bg-rose-50 hover:text-rose-600' },
-    { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={20}/>, color: 'hover:bg-green-50 hover:text-green-600' },
-    { id: 'notas-fiscais', label: 'Notas Fiscais', icon: <FileText size={20}/>, color: 'hover:bg-violet-50 hover:text-violet-600' },
-    { id: 'mtr', label: 'Manifesto MTR', icon: <Truck size={20}/>, color: 'hover:bg-amber-50 hover:text-amber-600' },
-    { id: 'ai-insights', label: 'IA Insights', icon: <Sparkles size={20}/>, color: 'hover:bg-purple-50 hover:text-purple-600' },
+    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18}/>, color: 'hover:bg-indigo-50 hover:text-indigo-600' },
+    { id: 'produtos', label: 'Catálogo', icon: <Package size={18}/>, color: 'hover:bg-blue-50 hover:text-blue-600' },
+    { id: 'estoque', label: 'Estoque', icon: <Scale size={18}/>, color: 'hover:bg-amber-50 hover:text-amber-600' },
+    { id: 'pf-clientes', label: 'Clientes PF', icon: <User size={18}/>, color: 'hover:bg-emerald-50 hover:text-emerald-600' },
+    { id: 'pj-clientes', label: 'Empresas PJ', icon: <Briefcase size={18}/>, color: 'hover:bg-cyan-50 hover:text-cyan-600' },
+    { id: 'pedidos', label: 'Novo Pedido', icon: <ShoppingCart size={18}/>, color: 'hover:bg-rose-50 hover:text-rose-600' },
+    { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={18}/>, color: 'hover:bg-green-50 hover:text-green-600' },
+    { id: 'notas-fiscais', label: 'Notas Fiscais', icon: <FileText size={18}/>, color: 'hover:bg-violet-50 hover:text-violet-600' },
+    { id: 'mtr', label: 'Manifesto MTR', icon: <Truck size={18}/>, color: 'hover:bg-amber-50 hover:text-amber-600' },
+    { id: 'ai-insights', label: 'IA Insights', icon: <Sparkles size={18}/>, color: 'hover:bg-purple-50 hover:text-purple-600' },
   ];
 
   const renderContent = () => {
@@ -186,15 +180,15 @@ const App: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-xl">A</div>
               <div>
-                <h1 className="font-black text-slate-800 tracking-tight leading-none text-lg">ADRIANA</h1>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Reciclagem & ERP</p>
+                <h1 className="font-black text-slate-800 tracking-tighter leading-none text-lg">ADRIANA</h1>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Reciclagem & ERP</p>
               </div>
             </div>
           </div>
           <nav className="flex-1 overflow-y-auto p-4 space-y-1">
             {menuItems.map((item) => (
               <button key={item.id} onClick={() => { setActiveTab(item.id as ActiveTab); setSidebarOpen(false); }}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg' : `text-slate-500 ${item.color}`}`}>
+                className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : `text-slate-500 ${item.color}`}`}>
                 {item.icon}
                 {item.label}
               </button>
@@ -206,34 +200,34 @@ const App: React.FC = () => {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {notification && (
           <div className="fixed top-6 right-6 z-50 animate-in slide-in-from-right-10">
-            <div className="bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+            <div className="bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 border-l-4 border-emerald-500">
               <CheckCircle2 className="text-emerald-400 w-5 h-5" />
-              <span className="font-bold text-sm">{notification}</span>
+              <span className="font-black uppercase text-[10px] tracking-widest">{notification}</span>
             </div>
           </div>
         )}
         <header className="h-20 bg-white border-b border-slate-100 flex items-center justify-between px-8 shrink-0">
-          <h2 className="text-xl font-black text-slate-800 capitalize tracking-tight">{(activeTab || '').replace('-', ' ')}</h2>
+          <h2 className="text-lg font-black text-slate-800 uppercase tracking-tighter">{(activeTab || '').replace('-', ' ')}</h2>
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-3">
               <div className="flex flex-col items-end">
-                <span className="text-xs font-black text-slate-800">{user?.displayName || 'Usuário'}</span>
-                <span className="text-[10px] font-bold text-slate-400">{user?.email}</span>
+                <span className="text-[11px] font-black text-slate-800 uppercase tracking-tight">{user?.displayName || 'USUÁRIO'}</span>
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{user?.email}</span>
               </div>
               {user?.photoURL ? (
-                <img src={user.photoURL} alt="Avatar" className="w-10 h-10 rounded-xl border-2 border-slate-100" referrerPolicy="no-referrer" />
+                <img src={user.photoURL} alt="Avatar" className="w-10 h-10 rounded-xl border-2 border-slate-50 shadow-sm" referrerPolicy="no-referrer" />
               ) : (
-                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 font-bold">
+                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 font-black text-lg">
                   {user?.displayName?.charAt(0) || 'U'}
                 </div>
               )}
             </div>
             <button 
               onClick={handleLogout}
-              className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+              className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
               title="Sair"
             >
-              <LogOut size={20} />
+              <LogOut size={18} />
             </button>
           </div>
         </header>
