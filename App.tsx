@@ -5,7 +5,7 @@ import {
   LogOut
 } from 'lucide-react';
 import { 
-  auth, db, GoogleAuthProvider, signInWithRedirect, signOut, onAuthStateChanged, FirebaseUser,
+  auth, db, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, FirebaseUser,
   collection, onSnapshot, query, orderBy, handleFirestoreError, OperationType, testConnection
 } from './firebase';
 import { Product, CustomerPF, CustomerPJ, FinancialRecord, ActiveTab } from './types';
@@ -36,6 +36,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
+  // 1. Monitorar o Estado da Autenticação
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -44,6 +45,24 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // 2. Capturar o resultado do Redirecionamento (ESSENCIAL PARA REDIRECT)
+  useEffect(() => {
+    const handleRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          setUser(result.user);
+          notify("Login realizado com sucesso!");
+        }
+      } catch (error) {
+        console.error("Erro no retorno do login:", error);
+        // Se der erro de Cross-Origin, o console vai avisar aqui
+      }
+    };
+    handleRedirect();
+  }, []);
+
+  // 3. Carregar Dados do Firebase quando logado
   useEffect(() => {
     if (!user) return;
 
@@ -53,9 +72,7 @@ const App: React.FC = () => {
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Product[];
       setProducts(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'products');
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'products'));
 
     const unsubPF = onSnapshot(collection(db, 'customersPF'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as any;
@@ -87,17 +104,19 @@ const App: React.FC = () => {
   const handleLogin = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      // MUDANÇA AQUI: Usando Redirect para evitar bloqueio do navegador
+      // Forçar a seleção de conta para evitar logins automáticos bugados
+      provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithRedirect(auth, provider);
     } catch (error) {
-      console.error("Erro ao fazer login:", error);
-      notify("Erro ao iniciar login.");
+      console.error("Erro ao iniciar login:", error);
+      notify("Erro ao iniciar conexão com o Google.");
     }
   };
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      setUser(null);
       notify("Sessão encerrada.");
     } catch (error) {
       console.error("Erro ao sair:", error);
@@ -120,20 +139,24 @@ const App: React.FC = () => {
   if (!user) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-50 p-6">
-        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10 text-center">
-          <div className="w-20 h-20 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-4xl mx-auto mb-8 shadow-lg shadow-indigo-200">A</div>
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight mb-2">Bem-vindo à Adriana</h1>
-          <p className="text-slate-500 font-medium mb-10 text-sm uppercase tracking-widest">Reciclagem & Gestão Industrial</p>
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10 text-center border border-slate-100">
+          <div className="w-20 h-20 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-4xl mx-auto mb-8 shadow-xl shadow-indigo-100">A</div>
+          <h1 className="text-3xl font-black text-slate-800 tracking-tighter mb-2">ADRIANA ERP</h1>
+          <p className="text-slate-400 font-bold mb-10 text-[10px] uppercase tracking-[0.3em]">Gestão Industrial & Resíduos</p>
           
           <button 
             onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-slate-900 text-white font-black py-5 px-6 rounded-2xl hover:bg-slate-800 transition-all active:scale-[0.98] shadow-xl text-xs uppercase tracking-widest"
+            className="w-full flex items-center justify-center gap-4 bg-slate-900 text-white font-black py-5 px-6 rounded-2xl hover:bg-black transition-all active:scale-[0.98] shadow-2xl text-[11px] uppercase tracking-widest"
           >
             <img src="https://www.google.com/favicon.ico" className="w-5 h-5 brightness-200" alt="Google" />
-            Entrar com Google
+            Acessar com Google
           </button>
           
-          <p className="mt-8 text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">Acesso Restrito a Colaboradores</p>
+          <div className="mt-10 p-4 bg-amber-50 rounded-xl border border-amber-100">
+            <p className="text-[10px] text-amber-700 font-bold leading-relaxed uppercase tracking-tight">
+              Aviso: O sistema utiliza redirecionamento seguro para autenticação.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -180,8 +203,8 @@ const App: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-xl">A</div>
               <div>
-                <h1 className="font-black text-slate-800 tracking-tighter leading-none text-lg">ADRIANA</h1>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Reciclagem & ERP</p>
+                <h1 className="font-black text-slate-800 tracking-tighter leading-none text-lg uppercase">ADRIANA</h1>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1 leading-none">Reciclagem & ERP</p>
               </div>
             </div>
           </div>
@@ -222,11 +245,7 @@ const App: React.FC = () => {
                 </div>
               )}
             </div>
-            <button 
-              onClick={handleLogout}
-              className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-              title="Sair"
-            >
+            <button onClick={handleLogout} className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all">
               <LogOut size={18} />
             </button>
           </div>
