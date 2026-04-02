@@ -3,6 +3,7 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
+  signInWithRedirect, 
   signOut, 
   onAuthStateChanged, 
   User as FirebaseUser 
@@ -38,11 +39,11 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// 3. Exportações de Autenticação
-export { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged };
+// 3. Exportações de Autenticação (AQUI ESTÁ O AJUSTE)
+export { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged };
 export type { FirebaseUser };
 
-// 4. Exportação das funções que o seu App.tsx está pedindo
+// 4. Exportação das funções do Firestore
 export { 
   collection, 
   addDoc, 
@@ -58,7 +59,7 @@ export {
   getDoc 
 };
 
-// 5. Definição das funções extras (handleFirestoreError e testConnection)
+// 5. Funções Auxiliares de Operação
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -78,7 +79,7 @@ export async function testConnection() {
   try {
     const testRef = doc(db, 'products', '1'); 
     await getDoc(testRef);
-    console.log("✅ CONEXÃO ESTABELECIDA: Projeto Adriana Online!");
+    console.log("✅ CONEXÃO ESTABELECIDA!");
   } catch (error) {
     console.error("❌ ERRO DE CONEXÃO.");
   }
