@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithRedirect, 
+  getRedirectResult, // ADICIONADO AQUI
   signOut, 
   onAuthStateChanged, 
   User as FirebaseUser 
@@ -24,7 +25,6 @@ import {
   getDoc 
 } from 'firebase/firestore';
 
-// 1. Configuração Real (Projeto Adriana)
 const firebaseConfig = {
   apiKey: "AIzaSyDhzhUtiul_KbV9vW3_Vb2owWr89NBxEaU",
   authDomain: "gen-lang-client-0910721167.firebaseapp.com",
@@ -34,39 +34,29 @@ const firebaseConfig = {
   appId: "1:542066404894:web:c74f59d1badc954c7e080f"
 };
 
-// 2. Inicialização
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// 3. Exportações de Autenticação (AQUI ESTÁ O AJUSTE)
-export { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged };
+// EXPORTAÇÕES (Todas que o App.tsx precisa agora)
+export { 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithRedirect, 
+  getRedirectResult, // ADICIONADO AQUI TAMBÉM
+  signOut, 
+  onAuthStateChanged 
+};
 export type { FirebaseUser };
 
-// 4. Exportação das funções do Firestore
 export { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  getDocFromServer, 
-  getDoc 
+  collection, addDoc, getDocs, onSnapshot, query, orderBy, 
+  doc, setDoc, updateDoc, deleteDoc, getDocFromServer, getDoc 
 };
 
-// 5. Funções Auxiliares de Operação
 export enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
+  CREATE = 'create', UPDATE = 'update', DELETE = 'delete', 
+  LIST = 'list', GET = 'get', WRITE = 'write'
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
