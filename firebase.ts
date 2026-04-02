@@ -4,7 +4,7 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithRedirect, 
-  getRedirectResult, // ADICIONADO AQUI
+  getRedirectResult, 
   signOut, 
   onAuthStateChanged, 
   User as FirebaseUser 
@@ -25,35 +25,36 @@ import {
   getDoc 
 } from 'firebase/firestore';
 
+// ===============================================================
+// 1. CONFIGURAÇÃO ATUALIZADA (PROJETO FINAL: 0817268461)
+// ===============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyDhzhUtiul_KbV9vW3_Vb2owWr89NBxEaU",
-  authDomain: "gen-lang-client-0910721167.firebaseapp.com",
-  projectId: "gen-lang-client-0910721167",
-  storageBucket: "gen-lang-client-0910721167.firebasestorage.app",
+  // ATENÇÃO: Verifique se a sua API Key no painel do Firebase 0817268461 é esta mesma:
+  apiKey: "AIzaSyDhzhUtiul_KbV9vW3_Vb2owWr89NBxEaU", 
+  
+  authDomain: "gen-lang-client-0817268461.firebaseapp.com",
+  projectId: "gen-lang-client-0817268461",
+  storageBucket: "gen-lang-client-0817268461.firebasestorage.app",
   messagingSenderId: "542066404894",
   appId: "1:542066404894:web:c74f59d1badc954c7e080f"
 };
 
+// 2. Inicialização
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// EXPORTAÇÕES (Todas que o App.tsx precisa agora)
-export { 
-  GoogleAuthProvider, 
-  signInWithPopup, 
-  signInWithRedirect, 
-  getRedirectResult, // ADICIONADO AQUI TAMBÉM
-  signOut, 
-  onAuthStateChanged 
-};
+// 3. Exportações de Autenticação
+export { GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged };
 export type { FirebaseUser };
 
+// 4. Exportação das funções do Firestore
 export { 
   collection, addDoc, getDocs, onSnapshot, query, orderBy, 
   doc, setDoc, updateDoc, deleteDoc, getDocFromServer, getDoc 
 };
 
+// 5. Funções Auxiliares
 export enum OperationType {
   CREATE = 'create', UPDATE = 'update', DELETE = 'delete', 
   LIST = 'list', GET = 'get', WRITE = 'write'
@@ -69,9 +70,9 @@ export async function testConnection() {
   try {
     const testRef = doc(db, 'products', '1'); 
     await getDoc(testRef);
-    console.log("✅ CONEXÃO ESTABELECIDA!");
+    console.log("✅ CONEXÃO ESTABELECIDA NO NOVO PROJETO!");
   } catch (error) {
-    console.error("❌ ERRO DE CONEXÃO.");
+    console.error("❌ ERRO DE CONEXÃO: Verifique o domínio autorizado.");
   }
 }
 
