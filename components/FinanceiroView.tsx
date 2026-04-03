@@ -125,12 +125,10 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
       e.currentTarget.reset();
 
     } catch (error: any) {
-      console.error("ERRO AO SALVAR:", error);
-      notify(`Erro: ${error.message || "Falha na conexão"}`);
-    } finally {
-      // GARANTE QUE O BOTÃO VOLTE AO NORMAL MESMO EM CASO DE ERRO
-      setIsProcessing(false);
-    }
+  console.error("🔥 ERRO REAL DO FIREBASE:", error);
+  
+  alert("ERRO REAL: " + error.message);
+}
   };
 
   return (
