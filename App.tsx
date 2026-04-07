@@ -46,7 +46,7 @@ const App: React.FC = () => {
 
   // 2. Carregar Dados em Tempo Real (Apenas se houver usuário)
   useEffect(() => {
-    if (!user) return;
+    //if (!user) return;
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (s) => {
       setProducts(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
