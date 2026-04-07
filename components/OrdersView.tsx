@@ -4,7 +4,7 @@ import { ShoppingCart, Package, ArrowRight, Plus, Trash2, User, Building2, Searc
 import { Product, FinancialRecord, CustomerPF, CustomerPJ } from '../types';
 import { db } from '../firebase';
 import { collection, writeBatch, doc } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from '../src/lib/db';
+import { handleFirestoreError, OperationType } from './db';
 
 interface Props {
   products: Product[];
