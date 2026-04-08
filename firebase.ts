@@ -13,10 +13,12 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// AJUSTE CRÍTICO: Conectando direto na instância do seu print
+export const db = getFirestore(app, "ai-studio-174cbed8-2bfa-4695-b977-723dd49a44ff");
 export const auth = getAuth(app);
 
-// EXPORTS NECESSÁRIOS PARA O APP.TSX NÃO TRAVAR
+// EXPORTS NECESSÁRIOS PARA O SISTEMA FUNCIONAR
 export { 
   signInWithEmailAndPassword, 
   signOut, 
