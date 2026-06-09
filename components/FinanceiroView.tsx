@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { FileText, RefreshCw, Plus, ArrowUpCircle, ArrowDownCircle, DollarSign, Calendar, Filter, Landmark } from 'lucide-react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { FileText, RefreshCw, Plus, ArrowUpCircle, ArrowDownCircle, Calendar, Filter, Landmark, Search, Trash2 } from 'lucide-react';
+import { collection, addDoc, serverTimestamp, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FinancialRecord } from '../types';
 
@@ -14,14 +14,23 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 
 const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
   const [showModal, setShowModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
+  const [searchDescription, setSearchDescription] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- LÓGICA DE FILTRO ---
+  // --- LÓGICA DE FILTRO INTEGRADA (DATA + BUSCA POR NOME/TERMO NA DESCRIÇÃO) ---
   const filteredFinancials = financials.filter(f => {
     const recordDate = new Date(f.date + "T12:00:00"); // Garante o fuso horário correto
-    return recordDate.getMonth() === selectedMonth && recordDate.getFullYear() === selectedYear;
+    const matchesDate = recordDate.getMonth() === selectedMonth && recordDate.getFullYear() === selectedYear;
+    
+    // Busca inteligente: varre o texto procurando o nome ou termo digitado
+    const descriptionText = (f.description || '').toLowerCase();
+    const searchText = searchDescription.toLowerCase();
+    const matchesDescription = descriptionText.includes(searchText);
+    
+    return matchesDate && matchesDescription;
   });
 
   // --- STATS CALCULADOS ---
@@ -36,7 +45,31 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
     expense: filteredFinancials.filter(f => f.type === 'despesa').reduce((a, b) => a + Number(b.value || 0), 0),
   };
 
-  // --- LÓGICA DE IMPORTAÇÃO DE PDF (Mantida a sua original com melhorias) ---
+  // --- LÓGICA DE LIMPEZA DO HISTÓRICO ---
+  const handleClearAll = async () => {
+    const confirm = window.confirm("🚨 ATENÇÃO: Isso vai apagar TODOS os lançamentos financeiros permanentemente do Firebase. Confirma?");
+    if (!confirm) return;
+
+    setIsCleaning(true);
+    try {
+      const querySnapshot = await getDocs(collection(db, 'financials'));
+      const batch = writeBatch(db);
+
+      querySnapshot.forEach((documento) => {
+        batch.delete(doc(db, 'financials', documento.id));
+      });
+
+      await batch.commit();
+      notify("Financeiro zerado com sucesso!");
+    } catch (error: any) {
+      console.error(error);
+      alert("Erro ao limpar banco: " + error.message);
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
+  // --- LÓGICA DE IMPORTAÇÃO DE PDF ---
   const handlePDFImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -50,7 +83,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
     reader.onload = async (event) => {
       try {
         const typedarray = new Uint8Array(event.target?.result as ArrayBuffer);
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs';
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
         const loadingTask = pdfjsLib.getDocument(typedarray);
         const pdf = await loadingTask.promise;
         let importedCount = 0;
@@ -118,7 +151,14 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
           <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Financeiro Industrial</h3>
           <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Controle de Fluxo e Conciliação</p>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap gap-3 w-full md:w-auto">
+          <button 
+            onClick={handleClearAll}
+            disabled={isCleaning}
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl text-[10px] font-black uppercase hover:bg-rose-100 transition-all disabled:opacity-40"
+          >
+            <Trash2 size={14}/> {isCleaning ? 'ZERANDO...' : 'ZERAR CAIXA'}
+          </button>
           <input type="file" ref={fileInputRef} onChange={handlePDFImport} accept=".pdf" className="hidden" />
           <button onClick={() => fileInputRef.current?.click()} disabled={isProcessing} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase hover:border-indigo-600 transition-all">
             {isProcessing ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />} IMPORTAR PDF
@@ -131,7 +171,6 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
 
       {/* QUADROS DE RESUMO */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* CARD PRINCIPAL: SALDO BANCÁRIO (HISTÓRICO TOTAL) */}
         <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
           <div className="absolute right-[-10px] top-[-10px] opacity-10 group-hover:scale-110 transition-transform">
              <Landmark size={120} />
@@ -146,7 +185,6 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
           </div>
         </div>
 
-        {/* CARD: GANHOS DO MÊS (FILTRADO) */}
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><ArrowUpCircle size={20}/></div>
@@ -155,7 +193,6 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
           <p className="text-4xl font-black text-emerald-600 leading-none">{formatCurrency(monthStats.revenue)}</p>
         </div>
 
-        {/* CARD: GASTOS DO MÊS (FILTRADO) */}
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-rose-50 text-rose-600 rounded-xl"><ArrowDownCircle size={20}/></div>
@@ -165,9 +202,22 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         </div>
       </div>
 
-      {/* FILTROS DE NAVEGAÇÃO */}
-      <div className="bg-white p-6 rounded-[2rem] border border-slate-100 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+      {/* FILTROS DE NAVEGAÇÃO E BUSCA POR DESCRIÇÃO */}
+      <div className="bg-white p-6 rounded-[2rem] border border-slate-100 flex flex-col lg:flex-row items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          
+          {/* INPUT DE BUSCA POR NOME/TERMO NA DESCRIÇÃO */}
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+            <input 
+              type="text"
+              value={searchDescription}
+              onChange={e => setSearchDescription(e.target.value)}
+              placeholder="Buscar por nome ou termo na descrição..."
+              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-xs uppercase outline-none focus:ring-2 ring-indigo-500/20 transition-all"
+            />
+          </div>
+
           <div className="flex items-center gap-2 bg-slate-50 px-4 py-3 rounded-xl border border-slate-100">
             <Calendar size={16} className="text-indigo-600" />
             <select 
@@ -196,7 +246,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         </div>
       </div>
 
-      {/* TABELA DE HISTÓRICO (FILTRADA) */}
+      {/* TABELA DE HISTÓRICO FILTRADA */}
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left min-w-[600px]">
@@ -230,7 +280,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         </div>
       </div>
 
-      {/* MODAL (Mantive sua estrutura original) */}
+      {/* MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95">
@@ -263,7 +313,6 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
 };
 
 export default FinanceiroView;
-
 // import React, { useState } from 'react';
 // import { db } from '../firebase';
 // import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
