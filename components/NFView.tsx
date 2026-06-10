@@ -8,6 +8,8 @@ interface Props {
   notify: (m: string) => void;
 }
 
+const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
 const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
   const [loading, setLoading] = useState(false);
   const [recipientType, setRecipientType] = useState<'CPF' | 'CNPJ'>('CNPJ');
@@ -17,10 +19,10 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
     // Emitente (Dados Reais Adriana Reciclagem)
     issuerName: 'ADRIANA RECICLAGEM LTDA',
     issuerCnpj: '18.560.350/0001-78',
-    issuerIE: '90637152-40', // Exemplo de formato padrão IE/PR se aplicável, ajuste com o real
+    issuerIE: '90637152-40',
     issuerAddress: 'Rua Rio Iguaçu, 1267 - Weissópolis, Pinhais - PR, 83.322-160',
     issuerCnae: '4744-0/99',
-    issuerRegime: '1', // 1 = Simples Nacional (Código numérico padrão exigido na NF-e)
+    issuerRegime: '1', // 1 = Simples Nacional (Código oficial para NF-e)
 
     // Destinatário
     destName: '',
@@ -38,14 +40,14 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
     qty: '',
     unit: 'KG',
     unitValue: '',
-    totalValue: '0.00', // Estado real preenchido para a API ler
+    totalValue: '0.00',
 
     // Tributos padrão Simples Nacional
     taxIcms: 'Diferimento',
     taxPis: '0.00',
     taxCofins: '0.00',
     taxIpi: '0.00',
-    cst: '400', // CSOSN 400 - Não tributada pelo Simples Nacional (Comum em sucata com diferimento)
+    cst: '400', // CSOSN 400 - Não tributada pelo Simples Nacional
 
     // Resíduo Perigoso
     isHazardous: false,
@@ -91,7 +93,7 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
           ...prev,
           destName: customer.companyName.toUpperCase(),
           destDoc: customer.cnpj,
-          destIE: customer.pixKey || 'ISENTO', // Caso use inscrição estadual no lugar ou tenha o campo respectivo
+          destIE: customer.pixKey || 'ISENTO',
           destAddress: `${customer.address || ''}, ${customer.number || 'S/N'} - ${customer.neighborhood || ''}, ${customer.city || ''} - ${customer.state || ''}`.toUpperCase()
         }));
         notify("Dados da empresa PJ carregados!");
@@ -99,6 +101,7 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
     }
   }, [docNumber, recipientType, customersPF, customersPJ]);
 
+  // TRANSMISSÃO BLINDADA CONTRA CONVERSÕES DE PÁGINAS HTML DE ERRO
   const handleTransmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -115,16 +118,20 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
         body: JSON.stringify(formData)
       });
 
-      const result = await response.json();
-
-      if (response.ok) {
-        notify(result.mensagem || "Nota Fiscal Eletrônica emitida e autorizada pela SEFAZ!");
-      } else {
-        throw new Error(result.error || "Rejeição da SEFAZ ou erro de validação.");
+      // Se o servidor der Erro 404, 500 ou devolver uma página HTML de erro (Vite/Vercel)
+      if (!response.ok) {
+        const errorText = await response.text(); // Lê como texto e não quebra o JSON parser
+        console.error("Erro bruto retornado pelo servidor:", errorText);
+        throw new Error(`Servidor fora do ar ou rota inexistente (Status ${response.status}). Verifique a API.`);
       }
+
+      // Se o status for de sucesso, processa o JSON amigável do back-end
+      const result = await response.json();
+      notify(result.mensagem || "Nota Fiscal Eletrônica emitida e autorizada pela SEFAZ!");
+
     } catch (error: any) {
       console.error(error);
-      notify("Falha no Envio: " + error.message);
+      notify(error.message || "Falha na conexão com o servidor de notas.");
     } finally {
       setLoading(false);
     }
@@ -135,7 +142,7 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
     { code: '5.551', desc: 'Venda de ativo imobilizado' },
     { code: '6.102', desc: 'Venda de mercadoria (Fora do Estado)' },
     { code: '1.102', desc: 'Compra para comercialização (Entrada de Sucata)' },
-    { code: '5.949', desc: 'Outra saída de mercadoria ou prestação de serviço não especificado' }
+    { code: '5.949', desc: 'Outra saída de mercadoria não especificada' }
   ];
 
   const ncmOptions = [
@@ -282,7 +289,7 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
         </div>
       </form>
 
-      {/* Grid Inferior de Status */}
+      {/* Status Inferior */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
          <div className="bg-white p-6 rounded-3xl border border-slate-100 flex items-center gap-4">
             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl"><CheckCircle2 size={20}/></div>
