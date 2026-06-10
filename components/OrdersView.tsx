@@ -75,7 +75,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     notify("Desconectado.");
   };
 
-  // --- FUNÇÃO PARA DIGITAR O PESO QUE VOCÊ QUER DIRETO NO CHECKOUT ---
+  // --- ALTERAR OU DIGITAR O PESO QUE QUISER MANUALMENTE NO CHECKOUT ---
   const updateCartQuantity = (productId: string, newQty: number) => {
     if (newQty < 0) return; // Impede pesos negativos
     setCart(cart.map(item => 
@@ -95,7 +95,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   }, [customersPF, customersPJ, customerSearch]);
 
   const addToCart = (p: Product) => {
-    // Se a balança estiver conectada puxa o peso dela, senão joga 1KG padrão para você ajustar digitando
+    // Se tiver balança conectada traz o peso dela, senão joga 1KG padrão para você mudar digitando
     const qtyToAdd = scaleWeight > 0 ? scaleWeight : 1;
     const existing = cart.find(i => i.product.id === p.id);
     if (existing) {
@@ -113,6 +113,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     return acc + (price * item.quantity);
   }, 0);
 
+  // ESTRUTURA DO TICKET DE IMPRESSÃO
   const printTicket = (items: any[], partner: any, totalVal: number) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -132,6 +133,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     printWindow.document.close();
   };
 
+  // FINALIZAÇÃO OPERACIONAL COM JANELA DE ESCOLHA PARA IMPRESSÃO
   const handleFinish = async () => {
     if (cart.length === 0 || !selectedPartner) return;
     
@@ -161,25 +163,31 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
       await batch.commit();
       
+      // ALTERNATIVA DE IMPRESSÃO OPCIONAL VIA CONFIRMAÇÃO EM TELA
       if (currentOrderType === 'compra') {
-        printTicket(currentCart, currentPartner, currentTotal);
+        const desejaImprimir = window.confirm("Pedido gravado com sucesso! Deseja emitir o ticket de entrada para o fornecedor?");
+        if (desejaImprimir) {
+          printTicket(currentCart, currentPartner, currentTotal);
+        }
+      } else {
+        notify("Venda finalizada e estoque atualizado!");
       }
 
       setCart([]);
       setSelectedPartner(null);
       setCustomerSearch('');
-      notify("Finalizado com sucesso!");
+      if (currentOrderType === 'compra') notify("Finalizado com sucesso!");
     } catch (e) {
-      notify("Erro ao salvar.");
+      notify("Erro ao salvar operação.");
     }
   };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in">
-      {/* SEÇÃO DA ESQUERDA: BALANÇA, CLIENTE E LISTA DE MATERIAIS */}
+      {/* COLUNA DA ESQUERDA: BALANÇA, BUSCA E MATERIAIS */}
       <div className="lg:col-span-8 space-y-6">
         
-        {/* BALANÇA E ABAS COMPRA/VENDA */}
+        {/* TOOGLE DE OPERAÇÃO E STATUS DA BALANÇA SERIAL */}
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
           <div className="flex justify-between items-center border-b border-slate-50 pb-6">
              <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1">
@@ -195,7 +203,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
              </div>
           </div>
 
-          {/* BUSCA E SELEÇÃO DE CLIENTE */}
+          {/* AUTOCOMPLETE DE PARCEIROS CADASTRADOS (PF / PJ) */}
           <div className="relative">
              <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Selecione o Cliente/Fornecedor..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
               {customerSearch && !selectedPartner && (
@@ -208,7 +216,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           </div>
         </div>
 
-        {/* BUSCA DE MATERIAIS */}
+        {/* INPUT DE PESQUISA DE ITENS */}
         <div className="space-y-4">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
@@ -220,7 +228,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             />
           </div>
 
-          {/* MATERIAIS ENCONTRADOS */}
+          {/* LISTA FILTRADA DE PRODUTOS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
             {filteredProducts.length > 0 ? filteredProducts.map(p => (
               <div key={p.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center group">
@@ -231,55 +239,4 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                 <button onClick={() => addToCart(p)} className="w-10 h-10 bg-slate-900 text-white rounded-xl hover:bg-indigo-600 transition-all flex items-center justify-center"><Plus size={20}/></button>
               </div>
             )) : (
-              <p className="col-span-2 text-center py-10 text-xs font-bold text-slate-300 uppercase">Nenhum material localizado</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* --- SEÇÃO DA DIREITA: CHECKOUT COM CAMPO DE DIGITAÇÃO DE PESO REAL --- */}
-      <div className="lg:col-span-4">
-        <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl sticky top-8">
-          <div className="flex items-center gap-3 mb-6">
-            <ShoppingCart size={20} className="text-indigo-600"/>
-            <h4 className="font-black text-lg uppercase tracking-tight">Checkout</h4>
-          </div>
-
-          <div className="space-y-3 mb-8 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-            {cart.length === 0 ? (
-              <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Nenhum item pesado</p>
-            ) : cart.map(item => (
-              <div key={item.product.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
-                <div className="flex-1 mr-2">
-                  <p className="font-black text-[10px] uppercase text-slate-800 mb-1">{item.product.name}</p>
-                  
-                  {/* INPUT NUMÉRICO: PERMITE ALTERAR OU DIGITAR O PESO MANUALMENTE */}
-                  <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1 max-w-[130px]">
-                    <input 
-                      type="number"
-                      step="0.001"
-                      value={item.quantity}
-                      onChange={e => updateCartQuantity(item.product.id, Number(e.target.value))}
-                      className="w-full text-xs font-black text-indigo-600 outline-none bg-transparent"
-                    />
-                    <span className="text-[10px] font-black text-slate-400">KG</span>
-                  </div>
-                </div>
-                <button onClick={() => removeFromCart(item.product.id)} className="text-rose-400 p-1 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
-              </div>
-            ))}
-          </div>
-
-          {/* TOTAIS E CONFIRMAÇÃO */}
-          <div className="border-t pt-6">
-            <p className="text-[10px] font-black text-slate-400 uppercase">Total Geral</p>
-            <p className="text-3xl font-black mb-6">{formatCurrency(total)}</p>
-            <button onClick={handleFinish} disabled={cart.length === 0 || !selectedPartner} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase text-xs disabled:opacity-20 transition-all shadow-xl shadow-indigo-100 hover:bg-indigo-700">Finalizar Pedido</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default OrdersView;
+              <p className="col-span-2 text-center py-
