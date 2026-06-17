@@ -6,7 +6,7 @@ import {
 
 import { 
   auth, db, signInWithEmailAndPassword, signOut, onAuthStateChanged, FirebaseUser,
-  collection, onSnapshot, query, orderBy
+  collection, onSnapshot, query, orderBy, doc, getDoc // Adicionado doc e getDoc aqui
 } from './firebase';
 
 import { Product, CustomerPF, CustomerPJ, FinancialRecord, ActiveTab } from './types';
@@ -27,6 +27,7 @@ const App: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null); // Estado para armazenar o cargo (admin/operador)
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -35,10 +36,33 @@ const App: React.FC = () => {
   const [customersPJ, setCustomersPJ] = useState<CustomerPJ[]>([]);
   const [financials, setFinancials] = useState<FinancialRecord[]>([]);
 
-  // 1. Monitorar Autenticação (Sem login automático para evitar erro de token)
+  // 1. Monitorar Autenticação e Buscar Cargo no Firestore
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      
+      if (u) {
+        try {
+          // Busca as informações do usuário na coleção "usuarios" pelo ID único dele (UID)
+          const userDocRef = doc(db, 'usuarios', u.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            setUserRole(userData.role || 'operador'); // Define o cargo ou assume operador por padrão
+            notify(`Bem-vindo, ${userData.nome || 'Usuário'}!`);
+          } else {
+            setUserRole('operador'); // Caso não encontre o documento no Firestore
+          }
+        } catch (error) {
+          console.error("Erro ao buscar perfil do usuário:", error);
+          setUserRole('operador');
+        }
+      } else {
+        setUserRole(null);
+        setActiveTab('dashboard'); // Reseta a aba ao deslogar
+      }
+      
       setIsAuthReady(true);
     });
     return () => unsubscribe();
@@ -76,7 +100,6 @@ const App: React.FC = () => {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      notify("Bem-vindo, Rodrigo!");
     } catch (err) {
       alert("E-mail ou senha inválidos. Verifique se o usuário existe no Firebase.");
     }
@@ -109,6 +132,7 @@ const App: React.FC = () => {
     );
   }
 
+  // Lista base de itens do menu comum a todos (Admin e Operador)
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18}/> },
     { id: 'produtos', label: 'Catálogo', icon: <Package size={18}/> },
@@ -116,11 +140,15 @@ const App: React.FC = () => {
     { id: 'pf-clientes', label: 'Clientes PF', icon: <User size={18}/> },
     { id: 'pj-clientes', label: 'Empresas PJ', icon: <Briefcase size={18}/> },
     { id: 'pedidos', label: 'Pedidos', icon: <ShoppingCart size={18}/> },
-    { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={18}/> },
     { id: 'notas-fiscais', label: 'Notas', icon: <FileText size={18}/> },
     { id: 'mtr', label: 'MTR', icon: <Truck size={18}/> },
-    { id: 'ai-insights', label: 'IA Insights', icon: <Sparkles size={18}/> },
   ];
+
+  // Adiciona abas confidenciais APENAS se o usuário logado for admin
+  if (userRole === 'admin') {
+    menuItems.splice(6, 0, { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={18}/> });
+    menuItems.push({ id: 'ai-insights', label: 'IA Insights', icon: <Sparkles size={18}/> });
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -156,10 +184,13 @@ const App: React.FC = () => {
             {activeTab === 'pf-clientes' && <ClientesPFView customers={customersPF} notify={notify} />}
             {activeTab === 'pj-clientes' && <ClientesPJView customers={customersPJ} notify={notify} />}
             {activeTab === 'pedidos' && <OrdersView products={products} financials={financials} customersPF={customersPF} customersPJ={customersPJ} notify={notify} />}
-            {activeTab === 'financeiro' && <FinanceiroView financials={financials} notify={notify} />}
+            
+            {/* Proteção extra: Só renderiza as telas se for admin */}
+            {activeTab === 'financeiro' && userRole === 'admin' && <FinanceiroView financials={financials} notify={notify} />}
+            {activeTab === 'ai-insights' && userRole === 'admin' && <AIInsightsView financials={financials} products={products} />}
+            
             {activeTab === 'notas-fiscais' && <NFView customersPF={customersPF} customersPJ={customersPJ} notify={notify} />}
             {activeTab === 'mtr' && <MTRView notify={notify} />}
-            {activeTab === 'ai-insights' && <AIInsightsView financials={financials} products={products} />}
           </div>
         </div>
       </main>
