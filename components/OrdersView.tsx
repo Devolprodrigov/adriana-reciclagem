@@ -108,9 +108,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => {
     const p = item.product || {};
-    const price = orderType === 'venda' 
-      ? (p.sellPrice ?? p.precoVenda ?? p.price ?? 0) 
-      : (p.costPrice ?? p.precoCusto ?? p.cost ?? 0);
+    const price = orderType === 'venda' ? (p.sellPrice || 0) : (p.costPrice || 0);
     return acc + (price * item.quantity);
   }, 0);
 
@@ -119,37 +117,41 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     if (!printWindow) return;
     const date = new Date().toLocaleString('pt-BR');
     
+    // Mapeia os itens gerando strings HTML seguras
+    const itemsHtml = items.map(i => {
+      const p = i.product || {};
+      
+      // Força a detecção exata do valor baseado no tipo de operação
+      let unitPrice = 0;
+      if (type === 'venda') {
+        unitPrice = p.sellPrice !== undefined ? Number(p.sellPrice) : Number(p.price || 0);
+      } else {
+        unitPrice = p.costPrice !== undefined ? Number(p.costPrice) : Number(p.cost || 0);
+      }
+      
+      const quantity = Number(i.quantity || 0);
+      const subTotal = unitPrice * quantity;
+      
+      return `
+        <div style="margin-bottom: 8px; border-bottom: 1px dotted #000; padding-bottom: 4px;">
+          <strong>${p.name || 'Item Desconhecido'}</strong><br>
+          ${quantity.toFixed(2)}kg x ${formatCurrency(unitPrice)} = <strong>${formatCurrency(subTotal)}</strong>
+        </div>
+      `;
+    }).join('');
+
     printWindow.document.write(`
       <html>
         <head><title>Ticket - Adriana Reciclagem</title></head>
-        <body style="font-family: monospace; width: 300px; padding: 10px; font-size: 12px; line-height: 1.4;">
+        <body style="font-family: monospace; width: 300px; padding: 10px; font-size: 12px; line-height: 1.4; color: #000;">
           <center>
             <strong style="font-size: 14px;">ADRIANA RECICLAGEM</strong><br>
             ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
           </center><br>
           DATA: ${date}<br>
-          PARCEIRO: ${partner.name}<hr style="border-top: 1px dashed #000;">
+          PARCEIRO: ${partner.name || 'Nenhum'}<hr style="border-top: 1px dashed #000;">
           
-          ${items.map(i => {
-            const p = i.product || {};
-            
-            let unitPrice = 0;
-            if (type === 'venda') {
-              unitPrice = p.sellPrice ?? p.precoVenda ?? p.price ?? 0;
-            } else {
-              unitPrice = p.costPrice ?? p.precoCusto ?? p.cost ?? 0;
-            }
-            
-            const quantity = Number(i.quantity || 0);
-            const subTotal = unitPrice * quantity;
-            
-            return `
-              <div style="margin-bottom: 8px; border-bottom: 1px dotted #eee; padding-bottom: 4px;">
-                <strong>${p.name || 'Item'}</strong><br>
-                ${quantity.toFixed(2)}kg x ${formatCurrency(unitPrice)} = <strong>${formatCurrency(subTotal)}</strong>
-              </div>
-            `;
-          }).join('')}
+          ${itemsHtml}
           
           <hr style="border-top: 1px dashed #000;">
           <span style="font-size: 14px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
@@ -195,7 +197,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           printTicket(currentCart, currentPartner, currentTotal, currentOrderType);
         }
       } else {
-        notify("Venda finalizada e estoque updated!");
+        notify("Venda finalizada e estoque atualizado!");
         const desejaImprimirVenda = window.confirm("Venda realizada! Deseja emitir o ticket de saída?");
         if (desejaImprimirVenda) {
           printTicket(currentCart, currentPartner, currentTotal, currentOrderType);
