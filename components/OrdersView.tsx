@@ -12,11 +12,10 @@ interface Props {
   notify: (m: string) => void;
 }
 
-// Interface estendida para controlar preço editável no carrinho
 interface CartItem {
   product: Product;
   quantity: number;
-  customPrice: number; // Preço que pode ser alterado na hora pelo operador
+  customPrice: number;
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -89,7 +88,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     ));
   };
 
-  // Nova função para atualizar o preço digitado direto no Checkout
   const updateCartPrice = (productId: string, newPrice: number) => {
     if (newPrice < 0) return;
     setCart(cart.map(item => 
@@ -110,7 +108,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const addToCart = (p: Product) => {
     const qtyToAdd = scaleWeight > 0 ? scaleWeight : 1;
-    // Captura o preço base inicial do catálogo dependendo se é compra ou venda
     const initialPrice = orderType === 'venda' ? (p.sellPrice || 0) : (p.costPrice || 0);
     
     const existing = cart.find(i => i.product.id === p.id);
@@ -124,11 +121,11 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const removeFromCart = (id: string) => setCart(cart.filter(i => i.product.id !== id));
 
-  // O cálculo total agora usa o customPrice editado pelo operador
   const total = cart.reduce((acc, item) => {
     return acc + (item.customPrice * item.quantity);
   }, 0);
 
+  // Função printTicket otimizada para economizar papel e tinta física
   const printTicket = (items: CartItem[], partner: any, totalVal: number, type: 'compra' | 'venda') => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -141,29 +138,55 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       const subTotal = price * quantity;
       
       return `
-        <div style="margin-bottom: 8px; border-bottom: 1px dotted #000; padding-bottom: 4px;">
+        <div style="margin-bottom: 5px; border-bottom: 1px dotted #000; padding-bottom: 3px;">
           <strong>${p.name || 'Item'}</strong><br>
-          ${quantity.toFixed(2)}kg x ${formatCurrency(price)} = <strong>${formatCurrency(subTotal)}</strong>
+          ${quantity.toFixed(2)}kg x ${formatCurrency(price)} = ${formatCurrency(subTotal)}
         </div>
       `;
     }).join('');
 
     printWindow.document.write(`
       <html>
-        <head><title>Ticket - Adriana Reciclagem</title></head>
-        <body style="font-family: monospace; width: 300px; padding: 10px; font-size: 12px; line-height: 1.4; color: #000;">
+        <head>
+          <title>Ticket</title>
+          <style>
+            /* Remove margens extras e força a impressora a respeitar o final real do conteúdo */
+            @page {
+              size: auto;
+              margin: 0mm;
+            }
+            body {
+              font-family: monospace;
+              width: 280px;
+              margin: 0;
+              padding: 5px;
+              font-size: 11px;
+              line-height: 1.3;
+              color: #000;
+              background-color: #fff;
+            }
+            center { margin-bottom: 5px; }
+            hr { border: 0; border-top: 1px dashed #000; margin: 5px 0; }
+          </style>
+        </head>
+        <body>
           <center>
-            <strong style="font-size: 14px;">ADRIANA RECICLAGEM</strong><br>
+            <strong style="font-size: 13px;">ADRIANA RECICLAGEM</strong><br>
             ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
-          </center><br>
+          </center>
           DATA: ${date}<br>
-          PARCEIRO: ${partner.name || 'Nenhum'}<hr style="border-top: 1px dashed #000;">
+          PARCEIRO: ${partner.name || 'Nenhum'}<hr>
           
           ${itemsHtml}
           
-          <hr style="border-top: 1px dashed #000;">
-          <span style="font-size: 14px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
-          <script>window.onload=()=>{window.print();window.close();};</script>
+          <hr>
+          <span style="font-size: 13px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
+          <script>
+            window.onload = () => {
+              window.print();
+              window.close();
+            };
+          </script>
         </body>
       </html>
     `);
@@ -297,7 +320,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                   </button>
                 </div>
                 
-                {/* Grid contendo o campo de peso e o novo campo de valor editável */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Peso (KG)</label>
@@ -315,7 +337,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
                   <div>
                     <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Preço (R$)</label>
-                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2 sequential-focus focus-within:ring-2 ring-indigo-500/20">
+                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
                       <span className="text-[10px] font-black text-slate-400">R$</span>
                       <input 
                         type="number"
@@ -328,7 +350,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                   </div>
                 </div>
 
-                {/* Mostra um subtotal visual discreto do item mudando em tempo real */}
                 <div className="text-right text-[10px] font-bold text-slate-400 uppercase">
                   Subtotal: <span className="text-slate-700 font-black">{formatCurrency(item.customPrice * item.quantity)}</span>
                 </div>
