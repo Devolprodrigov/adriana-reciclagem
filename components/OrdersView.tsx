@@ -107,11 +107,14 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   const removeFromCart = (id: string) => setCart(cart.filter(i => i.product.id !== id));
 
   const total = cart.reduce((acc, item) => {
-    const price = orderType === 'venda' ? item.product.sellPrice : item.product.costPrice;
+    const p = item.product || {};
+    const price = orderType === 'venda' 
+      ? (p.sellPrice ?? p.precoVenda ?? p.price ?? 0) 
+      : (p.costPrice ?? p.precoCusto ?? p.cost ?? 0);
     return acc + (price * item.quantity);
   }, 0);
 
-  // Alterado para receber o tipo da ordem e imprimir os valores correspondentes
+  // Função printTicket atualizada com correções de segurança nos preços
   const printTicket = (items: any[], partner: any, totalVal: number, type: 'compra' | 'venda') => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -123,24 +126,35 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         <body style="font-family: monospace; width: 300px; padding: 10px; font-size: 12px; line-height: 1.4;">
           <center>
             <strong style="font-size: 14px;">ADRIANA RECICLAGEM</strong><br>
-            ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
+            \${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
           </center><br>
-          DATA: ${date}<br>
-          PARCEIRO: ${partner.name}<hr style="border-top: 1px dashed #000;">
+          DATA: \${date}<br>
+          PARCEIRO: \${partner.name}<hr style="border-top: 1px dashed #000;">
           
-          ${items.map(i => {
-            const unitPrice = type === 'venda' ? i.product.sellPrice : i.product.costPrice;
-            const subTotal = unitPrice * i.quantity;
+          \${items.map(i => {
+            const p = i.product || {};
+            
+            // Busca de forma flexível a propriedade de preço do banco
+            let unitPrice = 0;
+            if (type === 'venda') {
+              unitPrice = p.sellPrice ?? p.precoVenda ?? p.price ?? 0;
+            } else {
+              unitPrice = p.costPrice ?? p.precoCusto ?? p.cost ?? 0;
+            }
+            
+            const quantity = Number(i.quantity || 0);
+            const subTotal = unitPrice * quantity;
+            
             return `
-              <div style="margin-bottom: 6px;">
-                <strong>${i.product.name}</strong><br>
-                ${i.quantity}kg x ${formatCurrency(unitPrice)} = ${formatCurrency(subTotal)}
+              <div style="margin-bottom: 8px; border-bottom: 1px dotted #eee; padding-bottom: 4px;">
+                <strong>\${p.name || 'Item'}</strong><br>
+                \${quantity.toFixed(2)}kg x \${formatCurrency(unitPrice)} = <strong>\${formatCurrency(subTotal)}</strong>
               </div>
             `;
           }).join('')}
           
           <hr style="border-top: 1px dashed #000;">
-          <span style="font-size: 14px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
+          <span style="font-size: 14px;"><strong>TOTAL GERAL: \${formatCurrency(totalVal)}</strong></span>
           <script>window.onload=()=>{window.print();window.close();};</script>
         </body>
       </html>
