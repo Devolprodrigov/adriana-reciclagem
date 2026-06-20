@@ -114,7 +114,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     return acc + (price * item.quantity);
   }, 0);
 
-  // Função printTicket atualizada com correções de segurança nos preços
   const printTicket = (items: any[], partner: any, totalVal: number, type: 'compra' | 'venda') => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -126,15 +125,14 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         <body style="font-family: monospace; width: 300px; padding: 10px; font-size: 12px; line-height: 1.4;">
           <center>
             <strong style="font-size: 14px;">ADRIANA RECICLAGEM</strong><br>
-            \${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
+            ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
           </center><br>
-          DATA: \${date}<br>
-          PARCEIRO: \${partner.name}<hr style="border-top: 1px dashed #000;">
+          DATA: ${date}<br>
+          PARCEIRO: ${partner.name}<hr style="border-top: 1px dashed #000;">
           
-          \${items.map(i => {
+          ${items.map(i => {
             const p = i.product || {};
             
-            // Busca de forma flexível a propriedade de preço do banco
             let unitPrice = 0;
             if (type === 'venda') {
               unitPrice = p.sellPrice ?? p.precoVenda ?? p.price ?? 0;
@@ -147,14 +145,14 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             
             return `
               <div style="margin-bottom: 8px; border-bottom: 1px dotted #eee; padding-bottom: 4px;">
-                <strong>\${p.name || 'Item'}</strong><br>
-                \${quantity.toFixed(2)}kg x \${formatCurrency(unitPrice)} = <strong>\${formatCurrency(subTotal)}</strong>
+                <strong>${p.name || 'Item'}</strong><br>
+                ${quantity.toFixed(2)}kg x ${formatCurrency(unitPrice)} = <strong>${formatCurrency(subTotal)}</strong>
               </div>
             `;
           }).join('')}
           
           <hr style="border-top: 1px dashed #000;">
-          <span style="font-size: 14px;"><strong>TOTAL GERAL: \${formatCurrency(totalVal)}</strong></span>
+          <span style="font-size: 14px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
           <script>window.onload=()=>{window.print();window.close();};</script>
         </body>
       </html>
@@ -197,7 +195,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           printTicket(currentCart, currentPartner, currentTotal, currentOrderType);
         }
       } else {
-        notify("Venda finalizada e estoque atualizado!");
+        notify("Venda finalizada e estoque updated!");
         const desejaImprimirVenda = window.confirm("Venda realizada! Deseja emitir o ticket de saída?");
         if (desejaImprimirVenda) {
           printTicket(currentCart, currentPartner, currentTotal, currentOrderType);
