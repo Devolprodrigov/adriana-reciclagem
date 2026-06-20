@@ -12,10 +12,17 @@ interface Props {
   notify: (m: string) => void;
 }
 
+// Interface estendida para controlar preço editável no carrinho
+interface CartItem {
+  product: Product;
+  quantity: number;
+  customPrice: number; // Preço que pode ser alterado na hora pelo operador
+}
+
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
 const OrdersView: React.FC<Props> = ({ products, financials, customersPF, customersPJ, notify }) => {
-  const [cart, setCart] = useState<{product: Product, quantity: number}[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<'compra' | 'venda'>('compra');
   const [searchTerm, setSearchTerm] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
@@ -82,6 +89,14 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     ));
   };
 
+  // Nova função para atualizar o preço digitado direto no Checkout
+  const updateCartPrice = (productId: string, newPrice: number) => {
+    if (newPrice < 0) return;
+    setCart(cart.map(item => 
+      item.product.id === productId ? { ...item, customPrice: newPrice } : item
+    ));
+  };
+
   const filteredProducts = products.filter(p => 
     (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
     (p.code || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -95,47 +110,40 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const addToCart = (p: Product) => {
     const qtyToAdd = scaleWeight > 0 ? scaleWeight : 1;
+    // Captura o preço base inicial do catálogo dependendo se é compra ou venda
+    const initialPrice = orderType === 'venda' ? (p.sellPrice || 0) : (p.costPrice || 0);
+    
     const existing = cart.find(i => i.product.id === p.id);
     if (existing) {
       setCart(cart.map(i => i.product.id === p.id ? { ...i, quantity: i.quantity + qtyToAdd } : i));
     } else {
-      setCart([...cart, { product: p, quantity: qtyToAdd }]);
+      setCart([...cart, { product: p, quantity: qtyToAdd, customPrice: initialPrice }]);
     }
     notify(`+ ${qtyToAdd}kg de ${p.name}`);
   };
 
   const removeFromCart = (id: string) => setCart(cart.filter(i => i.product.id !== id));
 
+  // O cálculo total agora usa o customPrice editado pelo operador
   const total = cart.reduce((acc, item) => {
-    const p = item.product || {};
-    const price = orderType === 'venda' ? (p.sellPrice || 0) : (p.costPrice || 0);
-    return acc + (price * item.quantity);
+    return acc + (item.customPrice * item.quantity);
   }, 0);
 
-  const printTicket = (items: any[], partner: any, totalVal: number, type: 'compra' | 'venda') => {
+  const printTicket = (items: CartItem[], partner: any, totalVal: number, type: 'compra' | 'venda') => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     const date = new Date().toLocaleString('pt-BR');
     
-    // Mapeia os itens gerando strings HTML seguras
     const itemsHtml = items.map(i => {
       const p = i.product || {};
-      
-      // Força a detecção exata do valor baseado no tipo de operação
-      let unitPrice = 0;
-      if (type === 'venda') {
-        unitPrice = p.sellPrice !== undefined ? Number(p.sellPrice) : Number(p.price || 0);
-      } else {
-        unitPrice = p.costPrice !== undefined ? Number(p.costPrice) : Number(p.cost || 0);
-      }
-      
       const quantity = Number(i.quantity || 0);
-      const subTotal = unitPrice * quantity;
+      const price = Number(i.customPrice || 0);
+      const subTotal = price * quantity;
       
       return `
         <div style="margin-bottom: 8px; border-bottom: 1px dotted #000; padding-bottom: 4px;">
-          <strong>${p.name || 'Item Desconhecido'}</strong><br>
-          ${quantity.toFixed(2)}kg x ${formatCurrency(unitPrice)} = <strong>${formatCurrency(subTotal)}</strong>
+          <strong>${p.name || 'Item'}</strong><br>
+          ${quantity.toFixed(2)}kg x ${formatCurrency(price)} = <strong>${formatCurrency(subTotal)}</strong>
         </div>
       `;
     }).join('');
@@ -271,31 +279,59 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       </div>
 
       <div className="lg:col-span-4">
-        <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-xl sticky top-8">
+        <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl sticky top-8">
           <div className="flex items-center gap-3 mb-6">
             <ShoppingCart size={20} className="text-indigo-600"/>
             <h4 className="font-black text-lg uppercase tracking-tight">Checkout</h4>
           </div>
 
-          <div className="space-y-3 mb-8 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-4 mb-8 max-h-[340px] overflow-y-auto pr-2 custom-scrollbar">
             {cart.length === 0 ? (
               <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Nenhum item pesado</p>
             ) : cart.map(item => (
-              <div key={item.product.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100/50">
-                <div className="flex-1 mr-2">
-                  <p className="font-black text-[10px] uppercase text-slate-800 mb-1">{item.product.name}</p>
-                  <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1 max-w-[130px]">
-                    <input 
-                      type="number"
-                      step="0.001"
-                      value={item.quantity}
-                      onChange={e => updateCartQuantity(item.product.id, Number(e.target.value))}
-                      className="w-full text-xs font-black text-indigo-600 outline-none bg-transparent"
-                    />
-                    <span className="text-[10px] font-black text-slate-400">KG</span>
+              <div key={item.product.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50 space-y-3 relative group">
+                <div className="flex justify-between items-start">
+                  <p className="font-black text-[11px] uppercase text-slate-800 pr-6 leading-tight">{item.product.name}</p>
+                  <button onClick={() => removeFromCart(item.product.id)} className="text-rose-400 p-1 hover:bg-rose-50 rounded-lg transition-colors absolute right-3 top-3">
+                    <Trash2 size={16}/>
+                  </button>
+                </div>
+                
+                {/* Grid contendo o campo de peso e o novo campo de valor editável */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Peso (KG)</label>
+                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
+                      <input 
+                        type="number"
+                        step="0.001"
+                        value={item.quantity}
+                        onChange={e => updateCartQuantity(item.product.id, Number(e.target.value))}
+                        className="w-full text-xs font-black text-slate-700 outline-none bg-transparent"
+                      />
+                      <span className="text-[9px] font-black text-slate-400">KG</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Preço (R$)</label>
+                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2 sequential-focus focus-within:ring-2 ring-indigo-500/20">
+                      <span className="text-[10px] font-black text-slate-400">R$</span>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        value={item.customPrice}
+                        onChange={e => updateCartPrice(item.product.id, Number(e.target.value))}
+                        className="w-full text-xs font-black text-indigo-600 outline-none bg-transparent"
+                      />
+                    </div>
                   </div>
                 </div>
-                <button onClick={() => removeFromCart(item.product.id)} className="text-rose-400 p-1 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
+
+                {/* Mostra um subtotal visual discreto do item mudando em tempo real */}
+                <div className="text-right text-[10px] font-bold text-slate-400 uppercase">
+                  Subtotal: <span className="text-slate-700 font-black">{formatCurrency(item.customPrice * item.quantity)}</span>
+                </div>
               </div>
             ))}
           </div>
