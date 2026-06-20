@@ -111,18 +111,36 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     return acc + (price * item.quantity);
   }, 0);
 
-  const printTicket = (items: any[], partner: any, totalVal: number) => {
+  // Alterado para receber o tipo da ordem e imprimir os valores correspondentes
+  const printTicket = (items: any[], partner: any, totalVal: number, type: 'compra' | 'venda') => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     const date = new Date().toLocaleString('pt-BR');
+    
     printWindow.document.write(`
       <html>
         <head><title>Ticket - Adriana Reciclagem</title></head>
-        <body style="font-family: monospace; width: 300px; padding: 10px;">
-          <center><strong>ADRIANA RECICLAGEM</strong><br>Entrada de Material</center><br>
-          DATA: ${date}<br>PARCEIRO: ${partner.name}<hr>
-          ${items.map(i => `${i.product.name} - ${i.quantity}kg<br>`).join('')}
-          <hr><strong>TOTAL: ${formatCurrency(totalVal)}</strong>
+        <body style="font-family: monospace; width: 300px; padding: 10px; font-size: 12px; line-height: 1.4;">
+          <center>
+            <strong style="font-size: 14px;">ADRIANA RECICLAGEM</strong><br>
+            ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
+          </center><br>
+          DATA: ${date}<br>
+          PARCEIRO: ${partner.name}<hr style="border-top: 1px dashed #000;">
+          
+          ${items.map(i => {
+            const unitPrice = type === 'venda' ? i.product.sellPrice : i.product.costPrice;
+            const subTotal = unitPrice * i.quantity;
+            return `
+              <div style="margin-bottom: 6px;">
+                <strong>${i.product.name}</strong><br>
+                ${i.quantity}kg x ${formatCurrency(unitPrice)} = ${formatCurrency(subTotal)}
+              </div>
+            `;
+          }).join('')}
+          
+          <hr style="border-top: 1px dashed #000;">
+          <span style="font-size: 14px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
           <script>window.onload=()=>{window.print();window.close();};</script>
         </body>
       </html>
@@ -162,10 +180,14 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       if (currentOrderType === 'compra') {
         const desejaImprimir = window.confirm("Pedido gravado com sucesso! Deseja emitir o ticket de entrada para o fornecedor?");
         if (desejaImprimir) {
-          printTicket(currentCart, currentPartner, currentTotal);
+          printTicket(currentCart, currentPartner, currentTotal, currentOrderType);
         }
       } else {
         notify("Venda finalizada e estoque atualizado!");
+        const desejaImprimirVenda = window.confirm("Venda realizada! Deseja emitir o ticket de saída?");
+        if (desejaImprimirVenda) {
+          printTicket(currentCart, currentPartner, currentTotal, currentOrderType);
+        }
       }
 
       setCart([]);
