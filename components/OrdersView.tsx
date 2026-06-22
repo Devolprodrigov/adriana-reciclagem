@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff } from 'lucide-react';
+import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff, Printer, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { Product, FinancialRecord, CustomerPF, CustomerPJ } from '../types';
 import { db } from '../firebase';
 import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
@@ -125,21 +125,21 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     return acc + (item.customPrice * item.quantity);
   }, 0);
 
-  // Função printTicket otimizada para economizar papel e tinta física
-  const printTicket = (items: CartItem[], partner: any, totalVal: number, type: 'compra' | 'venda') => {
+  // Função printTicket otimizada para aceitar re-impressão direta do histórico
+  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    const date = new Date().toLocaleString('pt-BR');
+    const date = customDate || new Date().toLocaleString('pt-BR');
     
     const itemsHtml = items.map(i => {
-      const p = i.product || {};
+      const name = i.productName || i.product?.name || 'Material';
       const quantity = Number(i.quantity || 0);
-      const price = Number(i.customPrice || 0);
+      const price = Number(i.customPrice || i.price || 0);
       const subTotal = price * quantity;
       
       return `
         <div style="margin-bottom: 5px; border-bottom: 1px dotted #000; padding-bottom: 3px;">
-          <strong>${p.name || 'Item'}</strong><br>
+          <strong>${name}</strong><br>
           ${quantity.toFixed(2)}kg x ${formatCurrency(price)} = ${formatCurrency(subTotal)}
         </div>
       `;
@@ -150,21 +150,8 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         <head>
           <title>Ticket</title>
           <style>
-            /* Remove margens extras e força a impressora a respeitar o final real do conteúdo */
-            @page {
-              size: auto;
-              margin: 0mm;
-            }
-            body {
-              font-family: monospace;
-              width: 280px;
-              margin: 0;
-              padding: 5px;
-              font-size: 11px;
-              line-height: 1.3;
-              color: #000;
-              background-color: #fff;
-            }
+            @page { size: auto; margin: 0mm; }
+            body { font-family: monospace; width: 280px; margin: 0; padding: 5px; font-size: 11px; line-height: 1.3; color: #000; background-color: #fff; }
             center { margin-bottom: 5px; }
             hr { border: 0; border-top: 1px dashed #000; margin: 5px 0; }
           </style>
@@ -172,25 +159,38 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         <body>
           <center>
             <strong style="font-size: 13px;">ADRIANA RECICLAGEM</strong><br>
-            ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
+            ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}<br>
+            ${customDate ? '* SEGUNDA VIA *' : ''}
           </center>
           DATA: ${date}<br>
-          PARCEIRO: ${partner.name || 'Nenhum'}<hr>
+          PARCEIRO: ${partnerName}<hr>
           
           ${itemsHtml}
           
           <hr>
           <span style="font-size: 13px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
-          <script>
-            window.onload = () => {
-              window.print();
-              window.close();
-            };
-          </script>
+          <script>window.onload = () => { window.print(); window.close(); };</script>
         </body>
       </html>
     `);
     printWindow.document.close();
+  };
+
+  // Função auxiliar para re-emitir ticket baseado no histórico financeiro salvo
+  const handleReprintHistory = (record: FinancialRecord) => {
+    const type: 'compra' | 'venda' = record.type === 'receita' ? 'venda' : 'compra';
+    // Decodifica a descrição estruturada "COMPRA - Nome" para pegar o parceiro
+    const partnerName = record.description.split(' - ')[1] || 'Não Identificado';
+    
+    // Como os itens originais viraram um registro financeiro consolidado, criamos um item fake representativo para o cupom
+    const mockItems = [{
+      productName: record.category === 'Vendas' ? 'Saída de Materiais Recicláveis' : 'Entrada de Materiais Consolidados',
+      quantity: 1,
+      price: record.value
+    }];
+
+    const customDate = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : undefined;
+    printTicket(mockItems, partnerName, record.value, type, customDate);
   };
 
   const handleFinish = async () => {
@@ -225,13 +225,13 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       if (currentOrderType === 'compra') {
         const desejaImprimir = window.confirm("Pedido gravado com sucesso! Deseja emitir o ticket de entrada para o fornecedor?");
         if (desejaImprimir) {
-          printTicket(currentCart, currentPartner, currentTotal, currentOrderType);
+          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType);
         }
       } else {
         notify("Venda finalizada e estoque atualizado!");
         const desejaImprimirVenda = window.confirm("Venda realizada! Deseja emitir o ticket de saída?");
         if (desejaImprimirVenda) {
-          printTicket(currentCart, currentPartner, currentTotal, currentOrderType);
+          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType);
         }
       }
 
@@ -244,124 +244,191 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     }
   };
 
+  // Pega apenas as últimas 5 movimentações geradas na operação
+  const recentOrders = useMemo(() => {
+    return financials
+      .filter(f => f.description.startsWith('COMPRA') || f.description.startsWith('VENDA'))
+      .slice(0, 5);
+  }, [financials]);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in">
-      <div className="lg:col-span-8 space-y-6">
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-          <div className="flex justify-between items-center border-b border-slate-50 pb-6">
-             <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1">
-               <button onClick={() => { setOrderType('compra'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'compra' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-400'}`}>Compra</button>
-               <button onClick={() => { setOrderType('venda'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'venda' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400'}`}>Venda</button>
-             </div>
-             <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl border ${isScaleConnected ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
-                <Scale size={18} className={isScaleConnected ? 'text-emerald-500' : 'text-slate-300'}/>
-                <span className="text-lg font-black">{scaleWeight.toFixed(3)} KG</span>
-                <button onClick={isScaleConnected ? disconnectScale : connectScale} className="text-indigo-600 ml-2">
-                    {isScaleConnected ? <WifiOff size={18}/> : <Wifi size={18}/>}
-                </button>
-             </div>
+    <div className="space-y-8 animate-in fade-in">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-8 space-y-6">
+          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+               <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1">
+                 <button onClick={() => { setOrderType('compra'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'compra' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-400'}`}>Compra</button>
+                 <button onClick={() => { setOrderType('venda'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'venda' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400'}`}>Venda</button>
+               </div>
+               <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl border ${isScaleConnected ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
+                  <Scale size={18} className={isScaleConnected ? 'text-emerald-500' : 'text-slate-300'}/>
+                  <span className="text-lg font-black">{scaleWeight.toFixed(3)} KG</span>
+                  <button onClick={isScaleConnected ? disconnectScale : connectScale} className="text-indigo-600 ml-2">
+                      {isScaleConnected ? <WifiOff size={18}/> : <Wifi size={18}/>}
+                  </button>
+               </div>
+            </div>
+
+            <div className="relative">
+               <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Selecione o Cliente/Fornecedor..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+                {customerSearch && !selectedPartner && (
+                  <div className="absolute bg-white shadow-xl rounded-2xl z-50 w-full p-2 border border-slate-100 mt-1">
+                    {allPartners.slice(0, 5).map(p => (
+                      <button key={p.id} onClick={() => { setSelectedPartner(p); setCustomerSearch(p.name); }} className="w-full text-left p-3 hover:bg-slate-50 rounded-xl font-bold text-sm">{p.name} ({p.type})</button>
+                    ))}
+                  </div>
+                )}
+            </div>
           </div>
 
-          <div className="relative">
-             <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Selecione o Cliente/Fornecedor..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-              {customerSearch && !selectedPartner && (
-                <div className="absolute bg-white shadow-xl rounded-2xl z-50 w-full p-2 border border-slate-100 mt-1">
-                  {allPartners.slice(0, 5).map(p => (
-                    <button key={p.id} onClick={() => { setSelectedPartner(p); setCustomerSearch(p.name); }} className="w-full text-left p-3 hover:bg-slate-50 rounded-xl font-bold text-sm">{p.name} ({p.type})</button>
-                  ))}
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+              <input 
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)} 
+                placeholder="Pesquisar material catálogo..." 
+                className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 ring-indigo-500/20 transition-all" 
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
+              {filteredProducts.length > 0 ? filteredProducts.map(p => (
+                <div key={p.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center group">
+                  <div>
+                    <p className="font-black text-slate-800 uppercase text-sm">{p.name}</p>
+                    <p className="text-[10px] font-bold text-slate-400">SALDO: {p.stock}kg</p>
+                  </div>
+                  <button onClick={() => addToCart(p)} className="w-10 h-10 bg-slate-900 text-white rounded-xl hover:bg-indigo-600 transition-all flex items-center justify-center"><Plus size={20}/></button>
                 </div>
+              )) : (
+                <p className="col-span-2 text-center py-10 text-xs font-bold text-slate-300 uppercase">Nenhum material localizado</p>
               )}
+            </div>
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-            <input 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value)} 
-              placeholder="Pesquisar material catálogo..." 
-              className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 ring-indigo-500/20 transition-all" 
-            />
-          </div>
+        <div className="lg:col-span-4">
+          <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl sticky top-8">
+            <div className="flex items-center gap-3 mb-6">
+              <ShoppingCart size={20} className="text-indigo-600"/>
+              <h4 className="font-black text-lg uppercase tracking-tight">Checkout</h4>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-            {filteredProducts.length > 0 ? filteredProducts.map(p => (
-              <div key={p.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center group">
-                <div>
-                  <p className="font-black text-slate-800 uppercase text-sm">{p.name}</p>
-                  <p className="text-[10px] font-bold text-slate-400">SALDO: {p.stock}kg</p>
+            <div className="space-y-4 mb-8 max-h-[340px] overflow-y-auto pr-2 custom-scrollbar">
+              {cart.length === 0 ? (
+                <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Nenhum item pesado</p>
+              ) : cart.map(item => (
+                <div key={item.product.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50 space-y-3 relative group">
+                  <div className="flex justify-between items-start">
+                    <p className="font-black text-[11px] uppercase text-slate-800 pr-6 leading-tight">{item.product.name}</p>
+                    <button onClick={() => removeFromCart(item.product.id)} className="text-rose-400 p-1 hover:bg-rose-50 rounded-lg transition-colors absolute right-3 top-3">
+                      <Trash2 size={16}/>
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Peso (KG)</label>
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
+                        <input 
+                          type="number"
+                          step="0.001"
+                          value={item.quantity}
+                          onChange={e => updateCartQuantity(item.product.id, Number(e.target.value))}
+                          className="w-full text-xs font-black text-slate-700 outline-none bg-transparent"
+                        />
+                        <span className="text-[9px] font-black text-slate-400">KG</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Preço (R$)</label>
+                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
+                        <span className="text-[10px] font-black text-slate-400">R$</span>
+                        <input 
+                          type="number"
+                          step="0.01"
+                          value={item.customPrice}
+                          onChange={e => updateCartPrice(item.product.id, Number(e.target.value))}
+                          className="w-full text-xs font-black text-indigo-600 outline-none bg-transparent"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right text-[10px] font-bold text-slate-400 uppercase">
+                    Subtotal: <span className="text-slate-700 font-black">{formatCurrency(item.customPrice * item.quantity)}</span>
+                  </div>
                 </div>
-                <button onClick={() => addToCart(p)} className="w-10 h-10 bg-slate-900 text-white rounded-xl hover:bg-indigo-600 transition-all flex items-center justify-center"><Plus size={20}/></button>
-              </div>
-            )) : (
-              <p className="col-span-2 text-center py-10 text-xs font-bold text-slate-300 uppercase">Nenhum material localizado</p>
-            )}
+              ))}
+            </div>
+
+            <div className="border-t pt-6">
+              <p className="text-[10px] font-black text-slate-400 uppercase">Total Geral</p>
+              <p className="text-3xl font-black mb-6">{formatCurrency(total)}</p>
+              <button onClick={handleFinish} disabled={cart.length === 0 || !selectedPartner} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase text-xs disabled:opacity-20 transition-all shadow-xl shadow-indigo-100 hover:bg-indigo-700">Finalizar Pedido</button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="lg:col-span-4">
-        <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl sticky top-8">
-          <div className="flex items-center gap-3 mb-6">
-            <ShoppingCart size={20} className="text-indigo-600"/>
-            <h4 className="font-black text-lg uppercase tracking-tight">Checkout</h4>
-          </div>
+      {/* SEÇÃO INFERIOR NOVA: HISTÓRICO PARA SEGUNDA VIA DE TICKETS */}
+      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-3 mb-6">
+          <Printer size={20} className="text-slate-700" />
+          <h4 className="font-black text-lg uppercase tracking-tight">Segunda Via de Tickets (Últimos Lançamentos)</h4>
+        </div>
 
-          <div className="space-y-4 mb-8 max-h-[340px] overflow-y-auto pr-2 custom-scrollbar">
-            {cart.length === 0 ? (
-              <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Nenhum item pesado</p>
-            ) : cart.map(item => (
-              <div key={item.product.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50 space-y-3 relative group">
-                <div className="flex justify-between items-start">
-                  <p className="font-black text-[11px] uppercase text-slate-800 pr-6 leading-tight">{item.product.name}</p>
-                  <button onClick={() => removeFromCart(item.product.id)} className="text-rose-400 p-1 hover:bg-rose-50 rounded-lg transition-colors absolute right-3 top-3">
-                    <Trash2 size={16}/>
-                  </button>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Peso (KG)</label>
-                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
-                      <input 
-                        type="number"
-                        step="0.001"
-                        value={item.quantity}
-                        onChange={e => updateCartQuantity(item.product.id, Number(e.target.value))}
-                        className="w-full text-xs font-black text-slate-700 outline-none bg-transparent"
-                      />
-                      <span className="text-[9px] font-black text-slate-400">KG</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Preço (R$)</label>
-                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
-                      <span className="text-[10px] font-black text-slate-400">R$</span>
-                      <input 
-                        type="number"
-                        step="0.01"
-                        value={item.customPrice}
-                        onChange={e => updateCartPrice(item.product.id, Number(e.target.value))}
-                        className="w-full text-xs font-black text-indigo-600 outline-none bg-transparent"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="text-right text-[10px] font-bold text-slate-400 uppercase">
-                  Subtotal: <span className="text-slate-700 font-black">{formatCurrency(item.customPrice * item.quantity)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t pt-6">
-            <p className="text-[10px] font-black text-slate-400 uppercase">Total Geral</p>
-            <p className="text-3xl font-black mb-6">{formatCurrency(total)}</p>
-            <button onClick={handleFinish} disabled={cart.length === 0 || !selectedPartner} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase text-xs disabled:opacity-20 transition-all shadow-xl shadow-indigo-100 hover:bg-indigo-700">Finalizar Pedido</button>
-          </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100">
+                <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Tipo</th>
+                <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Descrição / Parceiro</th>
+                <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Data</th>
+                <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Valor Total</th>
+                <th className="py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-wider">Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentOrders.length > 0 ? recentOrders.map(record => {
+                const isVenda = record.type === 'receita';
+                return (
+                  <tr key={record.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4">
+                      <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase px-2.5 py-1 rounded-lg ${isVenda ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                        {isVenda ? <ArrowUpRight size={12}/> : <ArrowDownLeft size={12}/>}
+                        {isVenda ? 'Venda' : 'Compra'}
+                      </span>
+                    </td>
+                    <td className="py-4 font-bold text-slate-700 text-sm">
+                      {record.description}
+                    </td>
+                    <td className="py-4 text-xs font-bold text-slate-400">
+                      {record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                    </td>
+                    <td className="py-4 font-black text-slate-800 text-sm">
+                      {formatCurrency(record.value)}
+                    </td>
+                    <td className="py-4 text-right">
+                      <button 
+                        onClick={() => handleReprintHistory(record)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors shadow-sm"
+                      >
+                        <Printer size={12}/> Reimprimir
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-xs font-bold text-slate-300 uppercase italic">Nenhum pedido recente localizado</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
