@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff, Printer, ArrowUpRight, ArrowDownLeft, Calendar } from 'lucide-react';
+import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff, Printer, ArrowUpRight, ArrowDownLeft, Calendar, Coins, CreditCard } from 'lucide-react';
 import { Product, FinancialRecord, CustomerPF, CustomerPJ } from '../types';
 import { db } from '../firebase';
 import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
@@ -23,11 +23,12 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 
 const OrdersView: React.FC<Props> = ({ products, financials, customersPF, customersPJ, notify }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<'compra' | 'venda'>('compra');
+  const [paymentMethod, setPaymentMethod] = useState<string>('banco'); // Estado para capturar o meio de pagamento (banco = PIX, dinheiro = CAIXA)
   const [searchTerm, setSearchTerm] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string} | null>(null);
 
-  // Define o mês vigente atual (Formato: YYYY-MM, ex: "2026-06") como estado inicial
+  // Define o mês vigente atual (Formato: YYYY-MM)
   const currentYearMonth = useMemo(() => {
     const d = new Date();
     const year = d.getFullYear();
@@ -135,10 +136,11 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     return acc + (item.customPrice * item.quantity);
   }, 0);
 
-  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string) => {
+  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     const date = customDate || new Date().toLocaleString('pt-BR');
+    const displayMethod = methodUsed === 'dinheiro' ? 'DINHEIRO VIVO (CAIXA)' : 'PIX / BANCO';
     
     const itemsHtml = items.map(i => {
       const name = i.productName || i.product?.name || 'Material';
@@ -172,7 +174,8 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             ${customDate ? '* SEGUNDA VIA *' : ''}
           </center>
           DATA: ${date}<br>
-          PARCEIRO: ${partnerName}<hr>
+          PARCEIRO: ${partnerName}<br>
+          FORMA: ${displayMethod}<hr>
           
           ${itemsHtml}
           
@@ -196,7 +199,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     }];
 
     const customDate = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : undefined;
-    printTicket(mockItems, partnerName, record.value, type, customDate);
+    printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod);
   };
 
   const handleFinish = async () => {
@@ -206,6 +209,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const currentCart = [...cart];
     const currentPartner = { ...selectedPartner };
     const currentTotal = total;
+    const currentMethod = paymentMethod;
 
     try {
       const batch = writeBatch(db);
@@ -222,7 +226,8 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         value: currentTotal,
         date: new Date().toISOString().split('T')[0],
         status: 'pago',
-        category: currentOrderType === 'venda' ? 'Vendas' : 'Suprimentos',
+        paymentMethod: currentMethod, // Vincula o método selecionado (banco ou dinheiro) ao lançamento
+        category: currentOrderType === 'venda' ? 'Vendas' : 'COMPRA DE MATERIAIS RECO',
         createdAt: serverTimestamp()
       });
 
@@ -231,37 +236,37 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       if (currentOrderType === 'compra') {
         const desejaImprimir = window.confirm("Pedido gravado com sucesso! Deseja emitir o ticket de entrada para o fornecedor?");
         if (desejaImprimir) {
-          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType);
+          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod);
         }
       } else {
         notify("Venda finalizada e estoque atualizado!");
         const desejaImprimirVenda = window.confirm("Venda realizada! Deseja emitir o ticket de saída?");
         if (desejaImprimirVenda) {
-          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType);
+          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod);
         }
       }
 
       setCart([]);
       setSelectedPartner(null);
       setCustomerSearch('');
+      setPaymentMethod('banco'); // Reseta para o padrão
       if (currentOrderType === 'compra') notify("Finalizado com sucesso!");
     } catch (e) {
       notify("Erro ao salvar operação.");
     }
   };
 
-  // Filtra as ordens comparando se o ano-mês da data bate com o ano-mês selecionado
   const filteredOrders = useMemo(() => {
     return financials.filter(f => {
       const isOrder = f.description.startsWith('COMPRA') || f.description.startsWith('VENDA');
       if (!isOrder || !f.date) return false;
-      return f.date.startsWith(selectedMonth); // Ex: "2026-06-22" começa com "2026-06"
+      return f.date.startsWith(selectedMonth);
     });
   }, [financials, selectedMonth]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in">
-      {/* Bloco Esquerdo Superior */}
+      {/* Bloco Esquerdo */}
       <div className="lg:col-span-8 space-y-6">
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
           <div className="flex justify-between items-center border-b border-slate-50 pb-6">
@@ -297,7 +302,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
               value={searchTerm} 
               onChange={e => setSearchTerm(e.target.value)} 
               placeholder="Pesquisar material catálogo..." 
-              className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 ring-indigo-500/20 transition-all" 
+              className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 ring-indigo-500/20" 
             />
           </div>
 
@@ -325,7 +330,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             <h4 className="font-black text-lg uppercase tracking-tight">Checkout</h4>
           </div>
 
-          <div className="space-y-4 mb-8 max-h-[340px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-4 mb-6 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
             {cart.length === 0 ? (
               <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Nenhum item pesado</p>
             ) : cart.map(item => (
@@ -342,9 +347,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                     <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Peso (KG)</label>
                     <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
                       <input 
-                        type="number"
-                        step="0.001"
-                        value={item.quantity}
+                        type="number" step="0.001" value={item.quantity}
                         onChange={e => updateCartQuantity(item.product.id, Number(e.target.value))}
                         className="w-full text-xs font-black text-slate-700 outline-none bg-transparent"
                       />
@@ -357,9 +360,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                     <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
                       <span className="text-[10px] font-black text-slate-400">R$</span>
                       <input 
-                        type="number"
-                        step="0.01"
-                        value={item.customPrice}
+                        type="number" step="0.01" value={item.customPrice}
                         onChange={e => updateCartPrice(item.product.id, Number(e.target.value))}
                         className="w-full text-xs font-black text-indigo-600 outline-none bg-transparent"
                       />
@@ -374,31 +375,45 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             ))}
           </div>
 
-          <div className="border-t pt-6">
+          {/* NOVO SELETOR DE FORMA DE PAGAMENTO ADICIONADO DENTRO DO QUADRO DE CHECKOUT */}
+          <div className="border-t pt-4 mb-4">
+            <label className="text-[10px] font-black text-slate-400 uppercase block mb-2 tracking-wider">Forma de Pagamento / Recebimento</label>
+            <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl">
+              <button 
+                type="button" 
+                onClick={() => setPaymentMethod('banco')}
+                className={`flex items-center justify-center gap-1.5 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${paymentMethod === 'banco' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}
+              >
+                <CreditCard size={14}/> PIX / BANCO
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setPaymentMethod('dinheiro')}
+                className={`flex items-center justify-center gap-1.5 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${paymentMethod === 'dinheiro' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400'}`}
+              >
+                <Coins size={14}/> CAIXA FISICO
+              </button>
+            </div>
+          </div>
+
+          <div className="border-t pt-4">
             <p className="text-[10px] font-black text-slate-400 uppercase">Total Geral</p>
-            <p className="text-3xl font-black mb-6">{formatCurrency(total)}</p>
+            <p className="text-3xl font-black mb-4">{formatCurrency(total)}</p>
             <button onClick={handleFinish} disabled={cart.length === 0 || !selectedPartner} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase text-xs disabled:opacity-20 transition-all shadow-xl shadow-indigo-100 hover:bg-indigo-700">Finalizar Pedido</button>
           </div>
         </div>
       </div>
 
-      {/* SEÇÃO INFERIOR COMPLETA: SEGUNDA VIA COM FILTRO DE MÊS INTEGRADO */}
+      {/* SEÇÃO INFERIOR: SEGUNDA VIA ATUALIZADA COM EXIBIÇÃO DA FORMA UTILIZADA */}
       <div className="lg:col-span-12 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-50 pb-4">
           <div className="flex items-center gap-3">
             <Printer size={20} className="text-slate-700" />
             <h4 className="font-black text-lg uppercase tracking-tight">Segunda Via de Tickets</h4>
           </div>
-          
-          {/* Componente do Filtro de Mês */}
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-4 py-2 rounded-2xl max-w-xs w-full sm:w-auto">
             <Calendar size={16} className="text-slate-400 shrink-0"/>
-            <input 
-              type="month" 
-              value={selectedMonth} 
-              onChange={e => setSelectedMonth(e.target.value)} 
-              className="bg-transparent text-xs font-black text-slate-700 outline-none w-full cursor-pointer uppercase"
-            />
+            <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent text-xs font-black text-slate-700 outline-none w-full cursor-pointer uppercase" />
           </div>
         </div>
 
@@ -407,6 +422,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             <thead className="sticky top-0 bg-white z-10">
               <tr className="border-b border-slate-100">
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Tipo</th>
+                <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Movimentação</th>
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Descrição / Parceiro</th>
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Data</th>
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Valor Total</th>
@@ -416,6 +432,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             <tbody>
               {filteredOrders.length > 0 ? filteredOrders.map(record => {
                 const isVenda = record.type === 'receita';
+                const isDinheiro = record.paymentMethod === 'dinheiro';
                 return (
                   <tr key={record.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                     <td className="py-4">
@@ -424,29 +441,24 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                         {isVenda ? 'Venda' : 'Compra'}
                       </span>
                     </td>
-                    <td className="py-4 font-bold text-slate-700 text-sm">
-                      {record.description}
+                    {/* COLUNA INFORMATIVA DA MOEDA UTILIZADA */}
+                    <td className="py-4">
+                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${isDinheiro ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                        {isDinheiro ? 'CAIXA FISICO' : 'PIX / BANCO'}
+                      </span>
                     </td>
-                    <td className="py-4 text-xs font-bold text-slate-400">
-                      {record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
-                    </td>
-                    <td className="py-4 font-black text-slate-800 text-sm">
-                      {formatCurrency(record.value)}
-                    </td>
+                    <td className="py-4 font-bold text-slate-700 text-sm">{record.description}</td>
+                    <td className="py-4 text-xs font-bold text-slate-400">{record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+                    <td className="py-4 font-black text-slate-800 text-sm">{formatCurrency(record.value)}</td>
                     <td className="py-4 text-right">
-                      <button 
-                        onClick={() => handleReprintHistory(record)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors shadow-sm"
-                      >
+                      <button onClick={() => handleReprintHistory(record)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors shadow-sm">
                         <Printer size={12}/> Reimprimir
                       </button>
                     </td>
                   </tr>
                 );
               }) : (
-                <tr>
-                  <td colSpan={5} className="text-center py-12 text-xs font-bold text-slate-300 uppercase italic">Nenhuma movimentação localizada para o mês selecionado</td>
-                </tr>
+                <tr><td colSpan={6} className="text-center py-12 text-xs font-bold text-slate-300 uppercase italic">Nenhuma movimentação localizada</td></tr>
               )}
             </tbody>
           </table>
