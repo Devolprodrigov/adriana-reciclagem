@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingCart, DollarSign, FileText, 
-  Scale, User, Briefcase, Sparkles, Truck, LogOut
+  Scale, User, Briefcase, Sparkles, Truck, LogOut, UserCheck
 } from 'lucide-react';
 
 // Importações do seu arquivo de configuração local
@@ -32,6 +32,7 @@ const App: React.FC = () => {
   const [password, setPassword] = useState('');
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null); // Estado para armazenar o cargo (admin/operador)
+  const [userName, setUserName] = useState<string>('Operador'); // Novo estado para armazenar o nome real do operador
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -40,7 +41,7 @@ const App: React.FC = () => {
   const [customersPJ, setCustomersPJ] = useState<CustomerPJ[]>([]);
   const [financials, setFinancials] = useState<FinancialRecord[]>([]);
 
-  // 1. Monitorar Autenticação e Buscar Cargo no Firestore
+  // 1. Monitorar Autenticação e Buscar Cargo/Nome no Firestore
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
@@ -53,17 +54,25 @@ const App: React.FC = () => {
           
           if (userDocSnap.exists()) {
             const userData = userDocSnap.data();
-            setUserRole(userData.role || 'operador'); // Define o cargo ou assume operador por padrão
-            notify(`Bem-vindo, ${userData.nome || 'Usuário'}!`);
+            setUserRole(userData.role || 'operador'); 
+            
+            // Define o nome vindo do Firestore ou usa uma alternativa baseada no email
+            const nameIdentified = userData.nome || u.email?.split('@')[0] || 'Usuário';
+            setUserName(nameIdentified);
+            
+            notify(`Bem-vindo, ${nameIdentified}!`);
           } else {
-            setUserRole('operador'); // Caso não encontre o documento no Firestore
+            setUserRole('operador');
+            setUserName(u.email?.split('@')[0] || 'Operador');
           }
         } catch (error) {
           console.error("Erro ao buscar perfil do usuário:", error);
           setUserRole('operador');
+          setUserName(u.email?.split('@')[0] || 'Operador');
         }
       } else {
         setUserRole(null);
+        setUserName('Operador');
         setActiveTab('dashboard'); // Reseta a aba ao deslogar
       }
       
@@ -74,8 +83,6 @@ const App: React.FC = () => {
 
   // 2. Carregar Dados em Tempo Real (Apenas se houver usuário)
   useEffect(() => {
-    //if (!user) return;
-
     const unsubProducts = onSnapshot(collection(db, 'products'), (s) => {
       setProducts(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
     }, (error) => console.error("Erro Produtos:", error));
@@ -169,6 +176,15 @@ const App: React.FC = () => {
             </button>
           ))}
         </nav>
+
+        {/* INDICADOR VISUAL DO OPERADOR LOGADO NO MENU LATERAL */}
+        <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 flex items-center gap-2.5">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block truncate">
+            Acesso: <span className="text-indigo-600 font-black">{userName}</span>
+          </span>
+        </div>
+
         <button onClick={() => signOut(auth)} className="p-8 border-t border-slate-100 flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-rose-600 transition-colors">
           <LogOut size={18}/> Sair
         </button>
@@ -187,9 +203,19 @@ const App: React.FC = () => {
             {activeTab === 'estoque' && <EstoqueView products={products} notify={notify} />}
             {activeTab === 'pf-clientes' && <ClientesPFView customers={customersPF} notify={notify} />}
             {activeTab === 'pj-clientes' && <ClientesPJView customers={customersPJ} notify={notify} />}
-            {activeTab === 'pedidos' && <OrdersView products={products} financials={financials} customersPF={customersPF} customersPJ={customersPJ} notify={notify} />}
             
-            {/* Proteção extra: Só renderiza as telas se for admin */}
+            {/* ENVIANDO O NOME DO OPERADOR PARA O COMPONENTE DE PEDIDOS */}
+            {activeTab === 'pedidos' && (
+              <OrdersView 
+                products={products} 
+                financials={financials} 
+                customersPF={customersPF} 
+                customersPJ={customersPJ} 
+                notify={notify} 
+                operatorName={userName} 
+              />
+            )}
+            
             {activeTab === 'financeiro' && userRole === 'admin' && <FinanceiroView financials={financials} notify={notify} />}
             {activeTab === 'ai-insights' && userRole === 'admin' && <AIInsightsView financials={financials} products={products} />}
             
