@@ -34,7 +34,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
 
   // --- LISTA DE CATEGORIAS OFICIAIS SOLICITADAS ---
   const categoriasPredefinidas = [
-    "COMPRA DE MATERIAIS RECO",
+    "VENDA",
     "TROCA DE PIX POR DINHEIRO VIVO",
     "ÁGUA",
     "INTERNET",
