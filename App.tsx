@@ -32,7 +32,7 @@ const App: React.FC = () => {
   const [password, setPassword] = useState('');
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null); // Estado para armazenar o cargo (admin/operador)
-  const [userName, setUserName] = useState<string>('Operador'); // Novo estado para armazenar o nome real do operador
+  const [userName, setUserName] = useState<string>('Operador'); // Estado para armazenar o nome real do operador
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -48,15 +48,21 @@ const App: React.FC = () => {
       
       if (u) {
         try {
-          // Busca as informações do usuário na coleção "usuarios" pelo ID único dele (UID)
           const userDocRef = doc(db, 'usuarios', u.uid);
           const userDocSnap = await getDoc(userDocRef);
           
           if (userDocSnap.exists()) {
             const userData = userDocSnap.data();
-            setUserRole(userData.role || 'operador'); 
+            const role = userData.role || 'operador';
+            setUserRole(role); 
             
-            // Define o nome vindo do Firestore ou usa uma alternativa baseada no email
+            // Se for operador, força a aba inicial para 'pedidos', senão vai pro 'dashboard'
+            if (role === 'operador') {
+              setActiveTab('pedidos');
+            } else {
+              setActiveTab('dashboard');
+            }
+            
             const nameIdentified = userData.nome || u.email?.split('@')[0] || 'Usuário';
             setUserName(nameIdentified);
             
@@ -64,16 +70,18 @@ const App: React.FC = () => {
           } else {
             setUserRole('operador');
             setUserName(u.email?.split('@')[0] || 'Operador');
+            setActiveTab('pedidos');
           }
         } catch (error) {
           console.error("Erro ao buscar perfil do usuário:", error);
           setUserRole('operador');
           setUserName(u.email?.split('@')[0] || 'Operador');
+          setActiveTab('pedidos');
         }
       } else {
         setUserRole(null);
         setUserName('Operador');
-        setActiveTab('dashboard'); // Reseta a aba ao deslogar
+        setActiveTab('dashboard');
       }
       
       setIsAuthReady(true);
@@ -81,7 +89,7 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. Carregar Dados em Tempo Real (Apenas se houver usuário)
+  // 2. Carregar Dados em Tempo Real
   useEffect(() => {
     const unsubProducts = onSnapshot(collection(db, 'products'), (s) => {
       setProducts(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
@@ -143,23 +151,26 @@ const App: React.FC = () => {
     );
   }
 
-  // Lista base de itens do menu comum a todos (Admin e Operador)
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18}/> },
-    { id: 'produtos', label: 'Catálogo', icon: <Package size={18}/> },
-    { id: 'estoque', label: 'Estoque', icon: <Scale size={18}/> },
-    { id: 'pf-clientes', label: 'Clientes PF', icon: <User size={18}/> },
-    { id: 'pj-clientes', label: 'Empresas PJ', icon: <Briefcase size={18}/> },
-    { id: 'pedidos', label: 'Pedidos', icon: <ShoppingCart size={18}/> },
-    { id: 'notas-fiscais', label: 'Notas', icon: <FileText size={18}/> },
-    { id: 'mtr', label: 'MTR', icon: <Truck size={18}/> },
-  ];
-
-  // Adiciona abas confidenciais APENAS se o usuário logado for admin
-  if (userRole === 'admin') {
-    menuItems.splice(6, 0, { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={18}/> });
-    menuItems.push({ id: 'ai-insights', label: 'IA Insights', icon: <Sparkles size={18}/> });
-  }
+  // --- MONTAGEM DINÂMICA DO MENU BASEADO NO CARGO DO USUÁRIO ---
+  const menuItems = userRole === 'admin' 
+    ? [
+        { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18}/> },
+        { id: 'produtos', label: 'Catálogo', icon: <Package size={18}/> },
+        { id: 'estoque', label: 'Estoque', icon: <Scale size={18}/> },
+        { id: 'pf-clientes', label: 'Clientes PF', icon: <User size={18}/> },
+        { id: 'pj-clientes', label: 'Empresas PJ', icon: <Briefcase size={18}/> },
+        { id: 'pedidos', label: 'Pedidos', icon: <ShoppingCart size={18}/> },
+        { id: 'financeiro', label: 'Financeiro', icon: <DollarSign size={18}/> },
+        { id: 'notas-fiscais', label: 'Notas', icon: <FileText size={18}/> },
+        { id: 'mtr', label: 'MTR', icon: <Truck size={18}/> },
+        { id: 'ai-insights', label: 'IA Insights', icon: <Sparkles size={18}/> },
+      ]
+    : [
+        // Menu exclusivo e limpo solicitado para o Operador
+        { id: 'pf-clientes', label: 'Clientes PF', icon: <User size={18}/> },
+        { id: 'pj-clientes', label: 'Empresas PJ', icon: <Briefcase size={18}/> },
+        { id: 'pedidos', label: 'Pedidos', icon: <ShoppingCart size={18}/> },
+      ];
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -177,7 +188,6 @@ const App: React.FC = () => {
           ))}
         </nav>
 
-        {/* INDICADOR VISUAL DO OPERADOR LOGADO NO MENU LATERAL */}
         <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 flex items-center gap-2.5">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></div>
           <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block truncate">
@@ -188,7 +198,7 @@ const App: React.FC = () => {
         <button onClick={() => signOut(auth)} className="p-8 border-t border-slate-100 flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-rose-600 transition-colors">
           <LogOut size={18}/> Sair
         </button>
-      </aside>
+      </</aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {notification && (
@@ -198,13 +208,12 @@ const App: React.FC = () => {
         )}
         <div className="flex-1 overflow-y-auto p-10">
           <div className="max-w-7xl mx-auto">
-            {activeTab === 'dashboard' && <DashboardView financials={financials} products={products} />}
-            {activeTab === 'produtos' && <ProdutosView products={products} notify={notify} />}
-            {activeTab === 'estoque' && <EstoqueView products={products} notify={notify} />}
+            {activeTab === 'dashboard' && userRole === 'admin' && <DashboardView financials={financials} products={products} />}
+            {activeTab === 'produtos' && userRole === 'admin' && <ProdutosView products={products} notify={notify} />}
+            {activeTab === 'estoque' && userRole === 'admin' && <EstoqueView products={products} notify={notify} />}
             {activeTab === 'pf-clientes' && <ClientesPFView customers={customersPF} notify={notify} />}
             {activeTab === 'pj-clientes' && <ClientesPJView customers={customersPJ} notify={notify} />}
             
-            {/* ENVIANDO O NOME DO OPERADOR PARA O COMPONENTE DE PEDIDOS */}
             {activeTab === 'pedidos' && (
               <OrdersView 
                 products={products} 
@@ -219,8 +228,8 @@ const App: React.FC = () => {
             {activeTab === 'financeiro' && userRole === 'admin' && <FinanceiroView financials={financials} notify={notify} />}
             {activeTab === 'ai-insights' && userRole === 'admin' && <AIInsightsView financials={financials} products={products} />}
             
-            {activeTab === 'notas-fiscais' && <NFView customersPF={customersPF} customersPJ={customersPJ} notify={notify} />}
-            {activeTab === 'mtr' && <MTRView notify={notify} />}
+            {activeTab === 'notas-fiscais' && userRole === 'admin' && <NFView customersPF={customersPF} customersPJ={customersPJ} notify={notify} />}
+            {activeTab === 'mtr' && userRole === 'admin' && <MTRView notify={notify} />}
           </div>
         </div>
       </main>
