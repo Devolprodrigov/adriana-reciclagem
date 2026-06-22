@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff, Printer, ArrowUpRight, ArrowDownLeft, Calendar, Coins, CreditCard } from 'lucide-react';
+import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff, Printer, ArrowUpRight, ArrowDownLeft, Calendar, Coins, CreditCard, UserCheck } from 'lucide-react';
 import { Product, FinancialRecord, CustomerPF, CustomerPJ } from '../types';
 import { db } from '../firebase';
 import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
@@ -10,6 +10,7 @@ interface Props {
   customersPF: CustomerPF[];
   customersPJ: CustomerPJ[];
   notify: (m: string) => void;
+  operatorName: string; // Nova propriedade recebida do App.tsx
 }
 
 interface CartItem {
@@ -20,15 +21,14 @@ interface CartItem {
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
-const OrdersView: React.FC<Props> = ({ products, financials, customersPF, customersPJ, notify }) => {
+const OrdersView: React.FC<Props> = ({ products, financials, customersPF, customersPJ, notify, operatorName }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<'compra' | 'venda'>('compra');
-  const [paymentMethod, setPaymentMethod] = useState<string>('banco'); // Estado para capturar o meio de pagamento (banco = PIX, dinheiro = CAIXA)
+  const [paymentMethod, setPaymentMethod] = useState<string>('banco');
   const [searchTerm, setSearchTerm] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string} | null>(null);
 
-  // Define o mês vigente atual (Formato: YYYY-MM)
   const currentYearMonth = useMemo(() => {
     const d = new Date();
     const year = d.getFullYear();
@@ -136,7 +136,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     return acc + (item.customPrice * item.quantity);
   }, 0);
 
-  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string) => {
+  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string, operator?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     const date = customDate || new Date().toLocaleString('pt-BR');
@@ -175,7 +175,8 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           </center>
           DATA: ${date}<br>
           PARCEIRO: ${partnerName}<br>
-          FORMA: ${displayMethod}<hr>
+          FORMA: ${displayMethod}<br>
+          OPERADOR: ${operator || 'SISTEMA'}<hr>
           
           ${itemsHtml}
           
@@ -199,7 +200,10 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     }];
 
     const customDate = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : undefined;
-    printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod);
+    
+    // Passa o campo do operador vindo do banco (pode usar o f.createdBy ou uma propriedade estendida)
+    const savedOperator = (record as any).operator || 'SISTEMA';
+    printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator);
   };
 
   const handleFinish = async () => {
@@ -210,6 +214,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const currentPartner = { ...selectedPartner };
     const currentTotal = total;
     const currentMethod = paymentMethod;
+    const currentOperator = operatorName; // Salva o nome de quem fechou agora
 
     try {
       const batch = writeBatch(db);
@@ -226,7 +231,8 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         value: currentTotal,
         date: new Date().toISOString().split('T')[0],
         status: 'pago',
-        paymentMethod: currentMethod, // Vincula o método selecionado (banco ou dinheiro) ao lançamento
+        paymentMethod: currentMethod,
+        operator: currentOperator, // Campo novo inserido no banco do Firestore
         category: currentOrderType === 'venda' ? 'Vendas' : 'COMPRA DE MATERIAIS RECO',
         createdAt: serverTimestamp()
       });
@@ -236,20 +242,20 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       if (currentOrderType === 'compra') {
         const desejaImprimir = window.confirm("Pedido gravado com sucesso! Deseja emitir o ticket de entrada para o fornecedor?");
         if (desejaImprimir) {
-          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod);
+          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator);
         }
       } else {
         notify("Venda finalizada e estoque atualizado!");
         const desejaImprimirVenda = window.confirm("Venda realizada! Deseja emitir o ticket de saída?");
         if (desejaImprimirVenda) {
-          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod);
+          printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator);
         }
       }
 
       setCart([]);
       setSelectedPartner(null);
       setCustomerSearch('');
-      setPaymentMethod('banco'); // Reseta para o padrão
+      setPaymentMethod('banco');
       if (currentOrderType === 'compra') notify("Finalizado com sucesso!");
     } catch (e) {
       notify("Erro ao salvar operação.");
@@ -375,7 +381,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             ))}
           </div>
 
-          {/* NOVO SELETOR DE FORMA DE PAGAMENTO ADICIONADO DENTRO DO QUADRO DE CHECKOUT */}
           <div className="border-t pt-4 mb-4">
             <label className="text-[10px] font-black text-slate-400 uppercase block mb-2 tracking-wider">Forma de Pagamento / Recebimento</label>
             <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl">
@@ -396,6 +401,14 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             </div>
           </div>
 
+          {/* SINALIZADOR VISUAL DE QUEM ESTÁ LOGADO FECHANDO O PEDIDO */}
+          <div className="bg-slate-50 px-4 py-3 rounded-2xl flex items-center gap-2 border border-slate-100/80 mb-4">
+            <UserCheck size={14} className="text-emerald-500 shrink-0" />
+            <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
+              Operador Ativo: <span className="text-slate-700">{operatorName}</span>
+            </span>
+          </div>
+
           <div className="border-t pt-4">
             <p className="text-[10px] font-black text-slate-400 uppercase">Total Geral</p>
             <p className="text-3xl font-black mb-4">{formatCurrency(total)}</p>
@@ -404,7 +417,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         </div>
       </div>
 
-      {/* SEÇÃO INFERIOR: SEGUNDA VIA ATUALIZADA COM EXIBIÇÃO DA FORMA UTILIZADA */}
+      {/* SEÇÃO INFERIOR: SEGUNDA VIA COM OPERADOR INCLUSO */}
       <div className="lg:col-span-12 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-50 pb-4">
           <div className="flex items-center gap-3">
@@ -424,6 +437,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Tipo</th>
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Movimentação</th>
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Descrição / Parceiro</th>
+                <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Operador</th>
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Data</th>
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Valor Total</th>
                 <th className="py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-wider">Ação</th>
@@ -441,13 +455,14 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                         {isVenda ? 'Venda' : 'Compra'}
                       </span>
                     </td>
-                    {/* COLUNA INFORMATIVA DA MOEDA UTILIZADA */}
                     <td className="py-4">
                       <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${isDinheiro ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
                         {isDinheiro ? 'CAIXA FISICO' : 'PIX / BANCO'}
                       </span>
                     </td>
                     <td className="py-4 font-bold text-slate-700 text-sm">{record.description}</td>
+                    {/* ADICIONADA COLUNA DO OPERADOR NA TABELA DE SEGUNDA VIA */}
+                    <td className="py-4 font-black text-indigo-600 text-xs uppercase">{(record as any).operator || 'SISTEMA'}</td>
                     <td className="py-4 text-xs font-bold text-slate-400">{record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
                     <td className="py-4 font-black text-slate-800 text-sm">{formatCurrency(record.value)}</td>
                     <td className="py-4 text-right">
@@ -458,7 +473,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                   </tr>
                 );
               }) : (
-                <tr><td colSpan={6} className="text-center py-12 text-xs font-bold text-slate-300 uppercase italic">Nenhuma movimentação localizada</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-xs font-bold text-slate-300 uppercase italic">Nenhuma movimentação localizada</td></tr>
               )}
             </tbody>
           </table>
