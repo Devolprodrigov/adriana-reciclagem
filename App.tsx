@@ -166,7 +166,6 @@ const App: React.FC = () => {
         { id: 'ai-insights', label: 'IA Insights', icon: <Sparkles size={18}/> },
       ]
     : [
-        // Menu exclusivo e limpo solicitado para o Operador
         { id: 'pf-clientes', label: 'Clientes PF', icon: <User size={18}/> },
         { id: 'pj-clientes', label: 'Empresas PJ', icon: <Briefcase size={18}/> },
         { id: 'pedidos', label: 'Pedidos', icon: <ShoppingCart size={18}/> },
@@ -198,7 +197,7 @@ const App: React.FC = () => {
         <button onClick={() => signOut(auth)} className="p-8 border-t border-slate-100 flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-rose-600 transition-colors">
           <LogOut size={18}/> Sair
         </button>
-      </</aside>
+      </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {notification && (
