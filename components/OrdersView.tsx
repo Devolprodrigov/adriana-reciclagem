@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff, Printer, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff, Printer, ArrowUpRight, ArrowDownLeft, Calendar } from 'lucide-react';
 import { Product, FinancialRecord, CustomerPF, CustomerPJ } from '../types';
 import { db } from '../firebase';
 import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
@@ -26,6 +26,16 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   const [searchTerm, setSearchTerm] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string} | null>(null);
+
+  // Define o mês vigente atual (Formato: YYYY-MM, ex: "2026-06") como estado inicial
+  const currentYearMonth = useMemo(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  }, []);
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
 
   // Balança States
   const [scaleWeight, setScaleWeight] = useState<number>(0);
@@ -125,7 +135,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     return acc + (item.customPrice * item.quantity);
   }, 0);
 
-  // Função printTicket otimizada para aceitar re-impressão direta do histórico
   const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -176,13 +185,10 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     printWindow.document.close();
   };
 
-  // Função auxiliar para re-emitir ticket baseado no histórico financeiro salvo
   const handleReprintHistory = (record: FinancialRecord) => {
     const type: 'compra' | 'venda' = record.type === 'receita' ? 'venda' : 'compra';
-    // Decodifica a descrição estruturada "COMPRA - Nome" para pegar o parceiro
     const partnerName = record.description.split(' - ')[1] || 'Não Identificado';
     
-    // Como os itens originais viraram um registro financeiro consolidado, criamos um item fake representativo para o cupom
     const mockItems = [{
       productName: record.category === 'Vendas' ? 'Saída de Materiais Recicláveis' : 'Entrada de Materiais Consolidados',
       quantity: 1,
@@ -244,146 +250,161 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     }
   };
 
-  // Pega apenas as últimas 5 movimentações geradas na operação
-  const recentOrders = useMemo(() => {
-    return financials
-      .filter(f => f.description.startsWith('COMPRA') || f.description.startsWith('VENDA'))
-      .slice(0, 5);
-  }, [financials]);
+  // Filtra as ordens comparando se o ano-mês da data bate com o ano-mês selecionado
+  const filteredOrders = useMemo(() => {
+    return financials.filter(f => {
+      const isOrder = f.description.startsWith('COMPRA') || f.description.startsWith('VENDA');
+      if (!isOrder || !f.date) return false;
+      return f.date.startsWith(selectedMonth); // Ex: "2026-06-22" começa com "2026-06"
+    });
+  }, [financials, selectedMonth]);
 
   return (
-    <div className="space-y-8 animate-in fade-in">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-8 space-y-6">
-          <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-50 pb-6">
-               <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1">
-                 <button onClick={() => { setOrderType('compra'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'compra' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-400'}`}>Compra</button>
-                 <button onClick={() => { setOrderType('venda'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'venda' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400'}`}>Venda</button>
-               </div>
-               <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl border ${isScaleConnected ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
-                  <Scale size={18} className={isScaleConnected ? 'text-emerald-500' : 'text-slate-300'}/>
-                  <span className="text-lg font-black">{scaleWeight.toFixed(3)} KG</span>
-                  <button onClick={isScaleConnected ? disconnectScale : connectScale} className="text-indigo-600 ml-2">
-                      {isScaleConnected ? <WifiOff size={18}/> : <Wifi size={18}/>}
-                  </button>
-               </div>
-            </div>
-
-            <div className="relative">
-               <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Selecione o Cliente/Fornecedor..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-                {customerSearch && !selectedPartner && (
-                  <div className="absolute bg-white shadow-xl rounded-2xl z-50 w-full p-2 border border-slate-100 mt-1">
-                    {allPartners.slice(0, 5).map(p => (
-                      <button key={p.id} onClick={() => { setSelectedPartner(p); setCustomerSearch(p.name); }} className="w-full text-left p-3 hover:bg-slate-50 rounded-xl font-bold text-sm">{p.name} ({p.type})</button>
-                    ))}
-                  </div>
-                )}
-            </div>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in">
+      {/* Bloco Esquerdo Superior */}
+      <div className="lg:col-span-8 space-y-6">
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+          <div className="flex justify-between items-center border-b border-slate-50 pb-6">
+             <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1">
+               <button onClick={() => { setOrderType('compra'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'compra' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-400'}`}>Compra</button>
+               <button onClick={() => { setOrderType('venda'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'venda' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400'}`}>Venda</button>
+             </div>
+             <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl border ${isScaleConnected ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
+                <Scale size={18} className={isScaleConnected ? 'text-emerald-500' : 'text-slate-300'}/>
+                <span className="text-lg font-black">{scaleWeight.toFixed(3)} KG</span>
+                <button onClick={isScaleConnected ? disconnectScale : connectScale} className="text-indigo-600 ml-2">
+                    {isScaleConnected ? <WifiOff size={18}/> : <Wifi size={18}/>}
+                </button>
+             </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-              <input 
-                value={searchTerm} 
-                onChange={e => setSearchTerm(e.target.value)} 
-                placeholder="Pesquisar material catálogo..." 
-                className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 ring-indigo-500/20 transition-all" 
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
-              {filteredProducts.length > 0 ? filteredProducts.map(p => (
-                <div key={p.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center group">
-                  <div>
-                    <p className="font-black text-slate-800 uppercase text-sm">{p.name}</p>
-                    <p className="text-[10px] font-bold text-slate-400">SALDO: {p.stock}kg</p>
-                  </div>
-                  <button onClick={() => addToCart(p)} className="w-10 h-10 bg-slate-900 text-white rounded-xl hover:bg-indigo-600 transition-all flex items-center justify-center"><Plus size={20}/></button>
+          <div className="relative">
+             <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Selecione o Cliente/Fornecedor..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+              {customerSearch && !selectedPartner && (
+                <div className="absolute bg-white shadow-xl rounded-2xl z-50 w-full p-2 border border-slate-100 mt-1">
+                  {allPartners.slice(0, 5).map(p => (
+                    <button key={p.id} onClick={() => { setSelectedPartner(p); setCustomerSearch(p.name); }} className="w-full text-left p-3 hover:bg-slate-50 rounded-xl font-bold text-sm">{p.name} ({p.type})</button>
+                  ))}
                 </div>
-              )) : (
-                <p className="col-span-2 text-center py-10 text-xs font-bold text-slate-300 uppercase">Nenhum material localizado</p>
               )}
-            </div>
           </div>
         </div>
 
-        <div className="lg:col-span-4">
-          <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl sticky top-8">
-            <div className="flex items-center gap-3 mb-6">
-              <ShoppingCart size={20} className="text-indigo-600"/>
-              <h4 className="font-black text-lg uppercase tracking-tight">Checkout</h4>
-            </div>
+        <div className="space-y-4">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+            <input 
+              value={searchTerm} 
+              onChange={e => setSearchTerm(e.target.value)} 
+              placeholder="Pesquisar material catálogo..." 
+              className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 ring-indigo-500/20 transition-all" 
+            />
+          </div>
 
-            <div className="space-y-4 mb-8 max-h-[340px] overflow-y-auto pr-2 custom-scrollbar">
-              {cart.length === 0 ? (
-                <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Nenhum item pesado</p>
-              ) : cart.map(item => (
-                <div key={item.product.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50 space-y-3 relative group">
-                  <div className="flex justify-between items-start">
-                    <p className="font-black text-[11px] uppercase text-slate-800 pr-6 leading-tight">{item.product.name}</p>
-                    <button onClick={() => removeFromCart(item.product.id)} className="text-rose-400 p-1 hover:bg-rose-50 rounded-lg transition-colors absolute right-3 top-3">
-                      <Trash2 size={16}/>
-                    </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Peso (KG)</label>
-                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
-                        <input 
-                          type="number"
-                          step="0.001"
-                          value={item.quantity}
-                          onChange={e => updateCartQuantity(item.product.id, Number(e.target.value))}
-                          className="w-full text-xs font-black text-slate-700 outline-none bg-transparent"
-                        />
-                        <span className="text-[9px] font-black text-slate-400">KG</span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Preço (R$)</label>
-                      <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
-                        <span className="text-[10px] font-black text-slate-400">R$</span>
-                        <input 
-                          type="number"
-                          step="0.01"
-                          value={item.customPrice}
-                          onChange={e => updateCartPrice(item.product.id, Number(e.target.value))}
-                          className="w-full text-xs font-black text-indigo-600 outline-none bg-transparent"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right text-[10px] font-bold text-slate-400 uppercase">
-                    Subtotal: <span className="text-slate-700 font-black">{formatCurrency(item.customPrice * item.quantity)}</span>
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
+            {filteredProducts.length > 0 ? filteredProducts.map(p => (
+              <div key={p.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center group">
+                <div>
+                  <p className="font-black text-slate-800 uppercase text-sm">{p.name}</p>
+                  <p className="text-[10px] font-bold text-slate-400">SALDO: {p.stock}kg</p>
                 </div>
-              ))}
-            </div>
-
-            <div className="border-t pt-6">
-              <p className="text-[10px] font-black text-slate-400 uppercase">Total Geral</p>
-              <p className="text-3xl font-black mb-6">{formatCurrency(total)}</p>
-              <button onClick={handleFinish} disabled={cart.length === 0 || !selectedPartner} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase text-xs disabled:opacity-20 transition-all shadow-xl shadow-indigo-100 hover:bg-indigo-700">Finalizar Pedido</button>
-            </div>
+                <button onClick={() => addToCart(p)} className="w-10 h-10 bg-slate-900 text-white rounded-xl hover:bg-indigo-600 transition-all flex items-center justify-center"><Plus size={20}/></button>
+              </div>
+            )) : (
+              <p className="col-span-2 text-center py-10 text-xs font-bold text-slate-300 uppercase">Nenhum material localizado</p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* SEÇÃO INFERIOR NOVA: HISTÓRICO PARA SEGUNDA VIA DE TICKETS */}
-      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-        <div className="flex items-center gap-3 mb-6">
-          <Printer size={20} className="text-slate-700" />
-          <h4 className="font-black text-lg uppercase tracking-tight">Segunda Via de Tickets (Últimos Lançamentos)</h4>
+      {/* Bloco Direito (Checkout) */}
+      <div className="lg:col-span-4">
+        <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl sticky top-8">
+          <div className="flex items-center gap-3 mb-6">
+            <ShoppingCart size={20} className="text-indigo-600"/>
+            <h4 className="font-black text-lg uppercase tracking-tight">Checkout</h4>
+          </div>
+
+          <div className="space-y-4 mb-8 max-h-[340px] overflow-y-auto pr-2 custom-scrollbar">
+            {cart.length === 0 ? (
+              <p className="text-center py-10 text-xs font-bold text-slate-300 uppercase italic">Nenhum item pesado</p>
+            ) : cart.map(item => (
+              <div key={item.product.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50 space-y-3 relative group">
+                <div className="flex justify-between items-start">
+                  <p className="font-black text-[11px] uppercase text-slate-800 pr-6 leading-tight">{item.product.name}</p>
+                  <button onClick={() => removeFromCart(item.product.id)} className="text-rose-400 p-1 hover:bg-rose-50 rounded-lg transition-colors absolute right-3 top-3">
+                    <Trash2 size={16}/>
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Peso (KG)</label>
+                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
+                      <input 
+                        type="number"
+                        step="0.001"
+                        value={item.quantity}
+                        onChange={e => updateCartQuantity(item.product.id, Number(e.target.value))}
+                        className="w-full text-xs font-black text-slate-700 outline-none bg-transparent"
+                      />
+                      <span className="text-[9px] font-black text-slate-400">KG</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Preço (R$)</label>
+                    <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-3 py-2">
+                      <span className="text-[10px] font-black text-slate-400">R$</span>
+                      <input 
+                        type="number"
+                        step="0.01"
+                        value={item.customPrice}
+                        onChange={e => updateCartPrice(item.product.id, Number(e.target.value))}
+                        className="w-full text-xs font-black text-indigo-600 outline-none bg-transparent"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right text-[10px] font-bold text-slate-400 uppercase">
+                  Subtotal: <span className="text-slate-700 font-black">{formatCurrency(item.customPrice * item.quantity)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t pt-6">
+            <p className="text-[10px] font-black text-slate-400 uppercase">Total Geral</p>
+            <p className="text-3xl font-black mb-6">{formatCurrency(total)}</p>
+            <button onClick={handleFinish} disabled={cart.length === 0 || !selectedPartner} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase text-xs disabled:opacity-20 transition-all shadow-xl shadow-indigo-100 hover:bg-indigo-700">Finalizar Pedido</button>
+          </div>
+        </div>
+      </div>
+
+      {/* SEÇÃO INFERIOR COMPLETA: SEGUNDA VIA COM FILTRO DE MÊS INTEGRADO */}
+      <div className="lg:col-span-12 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-50 pb-4">
+          <div className="flex items-center gap-3">
+            <Printer size={20} className="text-slate-700" />
+            <h4 className="font-black text-lg uppercase tracking-tight">Segunda Via de Tickets</h4>
+          </div>
+          
+          {/* Componente do Filtro de Mês */}
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-4 py-2 rounded-2xl max-w-xs w-full sm:w-auto">
+            <Calendar size={16} className="text-slate-400 shrink-0"/>
+            <input 
+              type="month" 
+              value={selectedMonth} 
+              onChange={e => setSelectedMonth(e.target.value)} 
+              className="bg-transparent text-xs font-black text-slate-700 outline-none w-full cursor-pointer uppercase"
+            />
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
           <table className="w-full text-left border-collapse">
-            <thead>
+            <thead className="sticky top-0 bg-white z-10">
               <tr className="border-b border-slate-100">
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Tipo</th>
                 <th className="py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Descrição / Parceiro</th>
@@ -393,7 +414,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
               </tr>
             </thead>
             <tbody>
-              {recentOrders.length > 0 ? recentOrders.map(record => {
+              {filteredOrders.length > 0 ? filteredOrders.map(record => {
                 const isVenda = record.type === 'receita';
                 return (
                   <tr key={record.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
@@ -424,7 +445,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                 );
               }) : (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-xs font-bold text-slate-300 uppercase italic">Nenhum pedido recente localizado</td>
+                  <td colSpan={5} className="text-center py-12 text-xs font-bold text-slate-300 uppercase italic">Nenhuma movimentação localizada para o mês selecionado</td>
                 </tr>
               )}
             </tbody>
