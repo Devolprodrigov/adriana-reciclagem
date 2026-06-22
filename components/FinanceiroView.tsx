@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { FileText, RefreshCw, Plus, ArrowUpCircle, ArrowDownCircle, Calendar, Filter, Landmark, Search, Trash2 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -16,21 +16,42 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
   const [searchDescription, setSearchDescription] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  
+  // --- INICIALIZAÇÃO INTELIGENTE DE DATAS (MÊS CORRENTE) ---
+  const defaultDates = useMemo(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    
+    // Primeiro dia do mês: YYYY-MM-01
+    const firstDay = `${year}-${month}-01`;
+    
+    // Último dia do mês
+    const lastDayNum = new Date(year, d.getMonth() + 1, 0).getDate();
+    const lastDay = `${year}-${month}-${String(lastDayNum).padStart(2, '0')}`;
+    
+    return { firstDay, lastDay };
+  }, []);
+
+  const [startDate, setStartDate] = useState<string>(defaultDates.firstDay);
+  const [endDate, setEndDate] = useState<string>(defaultDates.lastDay);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- LÓGICA DE FILTRO INTEGRADA (DATA + BUSCA POR NOME/TERMO NA DESCRIÇÃO) ---
+  // --- LÓGICA DE FILTRO DIÁRIO + BUSCA POR NOME/TERMO ---
   const filteredFinancials = financials.filter(f => {
-    const recordDate = new Date(f.date + "T12:00:00"); // Garante o fuso horário correto
-    const matchesDate = recordDate.getMonth() === selectedMonth && recordDate.getFullYear() === selectedYear;
+    if (!f.date) return false;
     
-    // Busca inteligente: varre o texto procurando o nome ou termo digitado
+    // Filtro por intervalo exato de dias (Inclusivo)
+    const matchesStartDate = startDate ? f.date >= startDate : true;
+    const matchesEndDate = endDate ? f.date <= endDate : true;
+    
+    // Busca inteligente por texto na descrição
     const descriptionText = (f.description || '').toLowerCase();
     const searchText = searchDescription.toLowerCase();
     const matchesDescription = descriptionText.includes(searchText);
     
-    return matchesDate && matchesDescription;
+    return matchesStartDate && matchesEndDate && matchesDescription;
   });
 
   // --- STATS CALCULADOS ---
@@ -39,8 +60,8 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
   const totalHistoricoDespesa = financials.filter(f => f.type === 'despesa').reduce((a, b) => a + Number(b.value || 0), 0);
   const saldoBancarioPrevisto = totalHistoricoReceita - totalHistoricoDespesa;
 
-  // Stats do Mês Selecionado (Para ver lucro/prejuízo no período)
-  const monthStats = {
+  // Stats do Intervalo de Dias Selecionado (Para ver lucro/prejuízo no período filtrado)
+  const periodStats = {
     revenue: filteredFinancials.filter(f => f.type === 'receita').reduce((a, b) => a + Number(b.value || 0), 0),
     expense: filteredFinancials.filter(f => f.type === 'despesa').reduce((a, b) => a + Number(b.value || 0), 0),
   };
@@ -87,6 +108,8 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         const loadingTask = pdfjsLib.getDocument(typedarray);
         const pdf = await loadingTask.promise;
         let importedCount = 0;
+        
+        const currentYear = new Date(startDate || new Date()).getFullYear();
 
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
@@ -99,7 +122,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
             const [_, date, description, valueStr] = match;
             const cleanValue = parseFloat(valueStr.replace(/\./g, '').replace(',', '.'));
             const [day, month] = date.split('/');
-            const formattedDate = `${selectedYear}-${month}-${day}`;
+            const formattedDate = `${currentYear}-${month}-${day}`;
 
             await addDoc(collection(db, 'financials'), {
               type: cleanValue >= 0 ? 'receita' : 'despesa',
@@ -188,26 +211,26 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><ArrowUpCircle size={20}/></div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ganhos no Mês</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ganhos no Período</span>
           </div>
-          <p className="text-4xl font-black text-emerald-600 leading-none">{formatCurrency(monthStats.revenue)}</p>
+          <p className="text-4xl font-black text-emerald-600 leading-none">{formatCurrency(periodStats.revenue)}</p>
         </div>
 
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-rose-50 text-rose-600 rounded-xl"><ArrowDownCircle size={20}/></div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Gastos no Mês</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Gastos no Período</span>
           </div>
-          <p className="text-4xl font-black text-rose-600 leading-none">{formatCurrency(monthStats.expense)}</p>
+          <p className="text-4xl font-black text-rose-600 leading-none">{formatCurrency(periodStats.expense)}</p>
         </div>
       </div>
 
-      {/* FILTROS DE NAVEGAÇÃO E BUSCA POR DESCRIÇÃO */}
+      {/* FILTROS DE NAVEGAÇÃO POR INTERVALO DE DATAS (DIA A DIA) */}
       <div className="bg-white p-6 rounded-[2rem] border border-slate-100 flex flex-col lg:flex-row items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
           
-          {/* INPUT DE BUSCA POR NOME/TERMO NA DESCRIÇÃO */}
-          <div className="relative w-full md:w-72">
+          {/* BUSCA POR NOME/TERMO NA DESCRIÇÃO */}
+          <div className="relative w-full sm:w-72">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
             <input 
               type="text"
@@ -218,31 +241,33 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
             />
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-50 px-4 py-3 rounded-xl border border-slate-100">
-            <Calendar size={16} className="text-indigo-600" />
-            <select 
-              value={selectedMonth} 
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="bg-transparent font-black text-[10px] uppercase outline-none cursor-pointer"
-            >
-              {['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'].map((m, i) => (
-                <option key={i} value={i}>{m}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2 bg-slate-50 px-4 py-3 rounded-xl border border-slate-100">
-            <Filter size={16} className="text-indigo-600" />
-            <select 
-              value={selectedYear} 
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-transparent font-black text-[10px] uppercase outline-none cursor-pointer"
-            >
-              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
+          {/* CONTROLE DE INTERVALO DIÁRIO */}
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 w-full sm:w-auto">
+              <Calendar size={14} className="text-indigo-600 shrink-0" />
+              <span className="text-[9px] font-black text-slate-400 uppercase">De:</span>
+              <input 
+                type="date" 
+                value={startDate} 
+                onChange={e => setStartDate(e.target.value)}
+                className="bg-transparent font-black text-[10px] outline-none cursor-pointer text-slate-700 uppercase"
+              />
+            </div>
+            
+            <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100 w-full sm:w-auto">
+              <Calendar size={14} className="text-indigo-600 shrink-0" />
+              <span className="text-[9px] font-black text-slate-400 uppercase">Até:</span>
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={e => setEndDate(e.target.value)}
+                className="bg-transparent font-black text-[10px] outline-none cursor-pointer text-slate-700 uppercase"
+              />
+            </div>
           </div>
         </div>
-        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-           Exibindo {filteredFinancials.length} transações em {selectedMonth + 1}/{selectedYear}
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center lg:text-right">
+           Exibindo {filteredFinancials.length} transações no período filtrado
         </div>
       </div>
 
@@ -261,7 +286,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
               {filteredFinancials.length === 0 ? (
                 <tr>
                    <td colSpan={3} className="px-8 py-16 text-center">
-                      <p className="font-bold text-slate-300 uppercase text-xs">Nenhum lançamento neste período.</p>
+                      <p className="font-bold text-slate-300 uppercase text-xs">Nenhum lançamento localizado neste dia/período.</p>
                    </td>
                 </tr>
               ) : (
@@ -313,70 +338,3 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
 };
 
 export default FinanceiroView;
-// import React, { useState } from 'react';
-// import { db } from '../firebase';
-// import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
-// import { Trash2, AlertTriangle } from 'lucide-react';
-// import { FinancialRecord } from '../types';
-
-// interface Props {
-//   financials: FinancialRecord[];
-//   notify: (m: string) => void;
-// }
-
-// const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
-//   const [isCleaning, setIsCleaning] = useState(false);
-
-//   // FUNÇÃO QUE LIMPA O BANCO INTEIRO
-//   const handleClearAll = async () => {
-//     const confirm = window.confirm("🚨 ATENÇÃO: Isso vai apagar TODOS os lançamentos financeiros permanentemente. Confirma?");
-//     if (!confirm) return;
-
-//     setIsCleaning(true);
-//     try {
-//       const querySnapshot = await getDocs(collection(db, 'financials'));
-//       const batch = writeBatch(db);
-
-//       querySnapshot.forEach((documento) => {
-//         batch.delete(doc(db, 'financials', documento.id));
-//       });
-
-//       await batch.commit();
-//       notify("Financeiro zerado com sucesso!");
-//     } catch (error: any) {
-//       console.error(error);
-//       alert("Erro ao limpar: " + error.message);
-//     } finally {
-//       setIsCleaning(false);
-//     }
-//   };
-
-//   return (
-//     <div className="space-y-6">
-//       <div className="flex justify-between items-center bg-white p-6 rounded-[2rem] shadow-sm">
-//         <div>
-//           <h2 className="text-xl font-black uppercase text-slate-800">Financeiro Industrial</h2>
-//           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gestão de Fluxo de Caixa</p>
-//         </div>
-
-//         {/* BOTÃO DE LIMPEZA */}
-//         <button 
-//           onClick={handleClearAll}
-//           disabled={isCleaning}
-//           className="flex items-center gap-2 px-6 py-3 bg-rose-50 text-rose-600 rounded-2xl font-black text-xs uppercase hover:bg-rose-100 transition-all border border-rose-100"
-//         >
-//           {isCleaning ? "LIMPANDO..." : <><Trash2 size={16}/> Limpar Tudo (Zerar)</>}
-//         </button>
-//       </div>
-
-//       {/* LISTA DE TRANSAÇÕES ABAIXO... (Mantenha o resto do seu código de tabela aqui) */}
-//       <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-50">
-//           <p className="text-center font-bold text-slate-400 py-10">
-//             {financials.length === 0 ? "Nenhum lançamento encontrado. Banco limpo!" : `Existem ${financials.length} lançamentos no banco.`}
-//           </p>
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default FinanceiroView;
