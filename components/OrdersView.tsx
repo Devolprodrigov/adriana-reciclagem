@@ -10,7 +10,7 @@ interface Props {
   customersPF: CustomerPF[];
   customersPJ: CustomerPJ[];
   notify: (m: string) => void;
-  operatorName: string; // Nova propriedade recebida do App.tsx
+  operatorName: string;
 }
 
 interface CartItem {
@@ -136,6 +136,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     return acc + (item.customPrice * item.quantity);
   }, 0);
 
+  // FUNÇÃO DE IMPRESSÃO AJUSTADA COM MARGEM DE SEGURANÇA À ESQUERDA
   const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string, operator?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -162,16 +163,28 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           <title>Ticket</title>
           <style>
             @page { size: auto; margin: 0mm; }
-            body { font-family: monospace; width: 280px; margin: 0; padding: 5px; font-size: 11px; line-height: 1.3; color: #000; background-color: #fff; }
-            center { margin-bottom: 5px; }
+            body { 
+              font-family: monospace; 
+              width: 255px; /* Reduzido ligeiramente a área útil */
+              margin: 0; 
+              padding-top: 5px;
+              padding-bottom: 5px;
+              padding-right: 5px;
+              padding-left: 15px; /* Adicionado recuo de segurança para evitar cortes físicos de letras */
+              font-size: 11px; 
+              line-height: 1.3; 
+              color: #000; 
+              background-color: #fff; 
+            }
+            center { margin-bottom: 5px; padding-right: 10px; }
             hr { border: 0; border-top: 1px dashed #000; margin: 5px 0; }
           </style>
         </head>
         <body>
           <center>
-            <strong style="font-size: 13px;">ADRIANA RECICLAGEM</strong><br>
-            ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}<br>
-            ${customDate ? '* SEGUNDA VIA *' : ''}
+            <strong style="font-size: 12px;">ADRIANA RECICLAGEM</strong><br>
+            ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
+            ${customDate ? '<br><small>* SEGUNDA VIA *</small>' : ''}
           </center>
           DATA: ${date}<br>
           PARCEIRO: ${partnerName}<br>
@@ -181,7 +194,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           ${itemsHtml}
           
           <hr>
-          <span style="font-size: 13px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
+          <span style="font-size: 12px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
           <script>window.onload = () => { window.print(); window.close(); };</script>
         </body>
       </html>
@@ -200,8 +213,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     }];
 
     const customDate = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : undefined;
-    
-    // Passa o campo do operador vindo do banco (pode usar o f.createdBy ou uma propriedade estendida)
     const savedOperator = (record as any).operator || 'SISTEMA';
     printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator);
   };
@@ -214,7 +225,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const currentPartner = { ...selectedPartner };
     const currentTotal = total;
     const currentMethod = paymentMethod;
-    const currentOperator = operatorName; // Salva o nome de quem fechou agora
+    const currentOperator = operatorName;
 
     try {
       const batch = writeBatch(db);
@@ -232,7 +243,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         date: new Date().toISOString().split('T')[0],
         status: 'pago',
         paymentMethod: currentMethod,
-        operator: currentOperator, // Campo novo inserido no banco do Firestore
+        operator: currentOperator,
         category: currentOrderType === 'venda' ? 'Vendas' : 'COMPRA DE MATERIAIS RECO',
         createdAt: serverTimestamp()
       });
@@ -258,7 +269,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       setPaymentMethod('banco');
       if (currentOrderType === 'compra') notify("Finalizado com sucesso!");
     } catch (e) {
-      notify("Erro ao salvar operação.");
+      notify("Erro ao salvar operation.");
     }
   };
 
@@ -389,19 +400,18 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                 onClick={() => setPaymentMethod('banco')}
                 className={`flex items-center justify-center gap-1.5 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${paymentMethod === 'banco' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}
               >
-                <CreditCard size={14}/> PIX / BANCO
+                PIX / BANCO
               </button>
               <button 
                 type="button" 
                 onClick={() => setPaymentMethod('dinheiro')}
                 className={`flex items-center justify-center gap-1.5 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${paymentMethod === 'dinheiro' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400'}`}
               >
-                <Coins size={14}/> CAIXA FISICO
+                CAIXA FISICO
               </button>
             </div>
           </div>
 
-          {/* SINALIZADOR VISUAL DE QUEM ESTÁ LOGADO FECHANDO O PEDIDO */}
           <div className="bg-slate-50 px-4 py-3 rounded-2xl flex items-center gap-2 border border-slate-100/80 mb-4">
             <UserCheck size={14} className="text-emerald-500 shrink-0" />
             <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
@@ -417,7 +427,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         </div>
       </div>
 
-      {/* SEÇÃO INFERIOR: SEGUNDA VIA COM OPERADOR INCLUSO */}
+      {/* SEÇÃO INFERIOR: SEGUNDA VIA */}
       <div className="lg:col-span-12 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-50 pb-4">
           <div className="flex items-center gap-3">
@@ -461,7 +471,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                       </span>
                     </td>
                     <td className="py-4 font-bold text-slate-700 text-sm">{record.description}</td>
-                    {/* ADICIONADA COLUNA DO OPERADOR NA TABELA DE SEGUNDA VIA */}
                     <td className="py-4 font-black text-indigo-600 text-xs uppercase">{(record as any).operator || 'SISTEMA'}</td>
                     <td className="py-4 text-xs font-bold text-slate-400">{record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
                     <td className="py-4 font-black text-slate-800 text-sm">{formatCurrency(record.value)}</td>
