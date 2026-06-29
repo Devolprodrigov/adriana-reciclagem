@@ -47,8 +47,23 @@ const App: React.FC = () => {
   const [customersPJ, setCustomersPJ] = useState<CustomerPJ[]>([]);
   const [financials, setFinancials] = useState<FinancialRecord[]>([]);
 
-  // Função auxiliar para inicializar a lista de novos operadores no banco
-  const inicializarOperadoresPadrao = async () => {
+  // Função para inicializar preventivamente os perfis no Firestore
+  const inicializarUsuariosSistema = async () => {
+    // 1. Cadastra automaticamente a Maria Eduarda como ADMIN via código caso não esteja no banco
+    try {
+      const mariaIdRef = doc(db, 'usuarios', 'iNZ5xsLgNzeQQU9XPUMo8amQNNf2');
+      const mariaSnap = await getDoc(mariaIdRef);
+      if (!mariaSnap.exists()) {
+        await setDoc(mariaIdRef, {
+          nome: 'MARIA EDUARDA',
+          role: 'admin'
+        });
+      }
+    } catch (e) {
+      console.error("Erro ao registrar Maria Eduarda Admin:", e);
+    }
+
+    // 2. Cadastra os operadores padrão
     const listaOperadores = ['RAFAEL', 'FÁBIO', 'ARBYS', 'JOHNNYS', 'KEVIN', 'ANDREA'];
     for (const nomeOp of listaOperadores) {
       try {
@@ -65,13 +80,12 @@ const App: React.FC = () => {
 
   // 1. Monitorar Autenticação e Buscar Cargo/Nome
   useEffect(() => {
-    inicializarOperadoresPadrao();
+    inicializarUsuariosSistema();
 
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       
       if (u) {
-        // Se a senha usada no login foi a padrão, ativa o bloqueio de primeiro acesso
         if (password === '123456') {
           setIsFirstLogin(true);
         }
@@ -94,14 +108,27 @@ const App: React.FC = () => {
             const nameIdentified = userData.nome || u.email?.split('@')[0] || 'Usuário';
             setUserName(nameIdentified);
           } else {
-            setUserRole('operador');
-            setUserName(u.email?.split('@')[0]?.toUpperCase() || 'OPERADOR');
-            setActiveTab('pedidos');
+            // Se for o UID da Maria Eduarda, força admin mesmo em caso de falha de leitura
+            if (u.uid === 'iNZ5xsLgNzeQQU9XPUMo8amQNNf2') {
+              setUserRole('admin');
+              setUserName('MARIA EDUARDA');
+              setActiveTab('dashboard');
+            } else {
+              setUserRole('operador');
+              setUserName(u.email?.split('@')[0]?.toUpperCase() || 'OPERADOR');
+              setActiveTab('pedidos');
+            }
           }
         } catch (error) {
-          setUserRole('operador');
-          setUserName('OPERADOR');
-          setActiveTab('pedidos');
+          if (u.uid === 'iNZ5xsLgNzeQQU9XPUMo8amQNNf2') {
+            setUserRole('admin');
+            setUserName('MARIA EDUARDA');
+            setActiveTab('dashboard');
+          } else {
+            setUserRole('operador');
+            setUserName('OPERADOR');
+            setActiveTab('pedidos');
+          }
         }
       } else {
         setUserRole(null);
@@ -119,7 +146,7 @@ const App: React.FC = () => {
   const handleForceChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 6) {
-      alert("A nova senha precisa ter pelo menos 6 dígitos.");
+      alert("A nova senha precisa tener pelo menos 6 dígitos.");
       return;
     }
     if (newPassword !== confirmPassword) {
