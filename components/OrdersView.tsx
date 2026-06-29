@@ -134,11 +134,16 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
-  // FUNÇÃO DE IMPRESSÃO PADRONIZADA COM MARGEM DE SEGURANÇA À ESQUERDA
-  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string, operator?: string) => {
+  // FUNÇÃO DE IMPRESSÃO PADRONIZADA COM DATA E HORA PRECISAS
+  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string, operator?: string, customTime?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    const date = customDate || new Date().toLocaleString('pt-BR');
+    
+    // Constrói a linha completa de data e hora de forma idêntica à imagem impressa
+    const now = new Date();
+    const timeDisplay = customTime || now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const dateDisplay = customDate ? `${customDate}, ${timeDisplay}` : `${now.toLocaleDateString('pt-BR')}, ${timeDisplay}`;
+    
     const displayMethod = methodUsed === 'dinheiro' ? 'DINHEIRO VIVO (CAIXA)' : 'PIX / BANCO';
     
     const itemsHtml = items.map(i => {
@@ -181,7 +186,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
             ${customDate ? '<br><small>* SEGUNDA VIA *</small>' : ''}
           </center>
-          DATA: ${date}<br>
+          DATA: ${dateDisplay}<br>
           PARCEIRO: ${partnerName}<br>
           FORMA: ${displayMethod}<br>
           OPERADOR: ${operator || 'SISTEMA'}<hr>
@@ -197,25 +202,35 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     printWindow.document.close();
   };
 
-  // RECONSTRÓI OS NOMES DOS PRODUTOS REAIS SALVOS NA SEGUNDA VIA
+  // RECONSTRÓI RETROATIVAMENTE OS PRODUTOS INCLUINDO A HORA REGISTRADA
   const handleReprintHistory = (record: FinancialRecord) => {
     const type: 'compra' | 'venda' = record.type === 'receita' ? 'venda' : 'compra';
     const partnerName = record.description.split(' - ')[1] || 'Não Identificado';
     
-    // Resgata os nomes originais dos produtos ou adota o fallback inteligente
-    const savedProductsName = (record as any).productsNameCleaned || record.category || (type === 'venda' ? 'Saída de Materiais Recicláveis' : 'Entrada de Materiais Consolidados');
+    let finalProductName = (record as any).productsNameCleaned;
+
+    if (!finalProductName) {
+      if (record.category && record.category !== 'Vendas' && record.category !== 'COMPRA DE MATERIAIS RECO') {
+        finalProductName = record.category;
+      } else {
+        finalProductName = type === 'venda' ? 'Saída de Materiais Recicláveis' : 'Entrada de Materiais Consolidados';
+      }
+    }
+
     const savedQty = (record as any).totalQtySaved || 1;
     const computedPrice = (record as any).totalQtySaved ? (record.value / savedQty) : record.value;
 
     const mockItems = [{
-      productName: savedProductsName.toUpperCase(),
+      productName: finalProductName.toUpperCase(),
       quantity: savedQty,
       price: computedPrice
     }];
 
     const customDate = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : undefined;
     const savedOperator = (record as any).operator || 'SISTEMA';
-    printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator);
+    const savedTime = (record as any).time || undefined; // Recupera a hora original do banco
+    
+    printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator, savedTime);
   };
 
   const handleFinish = async () => {
@@ -228,9 +243,11 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const currentMethod = paymentMethod;
     const currentOperator = operatorName;
     
-    // Mapeia e junta a listagem de produtos para salvar o relatório de texto no Firestore
     const productsListText = currentCart.map(i => i.product.name).join(', ');
     const totalQtyCalculated = currentCart.reduce((sum, i) => sum + i.quantity, 0);
+    
+    // Captura a hora exata da transação
+    const exactTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     try {
       const batch = writeBatch(db);
@@ -246,19 +263,20 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         description: `${currentOrderType.toUpperCase()} - ${currentPartner.name}`,
         value: currentTotal,
         date: new Date().toISOString().split('T')[0],
+        time: exactTime, // Salva a hora exata da operação de forma explícita no banco
         status: 'pago',
         paymentMethod: currentMethod,
         operator: currentOperator,
-        productsNameCleaned: productsListText,     // Novo campo: Guarda a listagem real
-        totalQtySaved: totalQtyCalculated,         // Novo campo: Guarda o peso total somado
+        productsNameCleaned: productsListText,     
+        totalQtySaved: totalQtyCalculated,         
         category: currentCart[0]?.product.name || (currentOrderType === 'venda' ? 'Vendas' : 'COMPRA DE MATERIAIS RECO'),
         createdAt: serverTimestamp()
       });
 
       await batch.commit();
       
-      // Imprime o cupom original detalhado direto do carrinho ativo
-      printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator);
+      // Imprime o cupom passando a hora capturada no momento exato
+      printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator, exactTime);
 
       setCart([]);
       setSelectedPartner(null);
@@ -380,7 +398,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                 <th className="py-4">Movimentação</th>
                 <th className="py-4">Descrição / Parceiro</th>
                 <th className="py-4">Operador</th>
-                <th className="py-4">Data</th>
+                <th className="py-4">Data / Hora</th> {/* Nome atualizado na tabela */}
                 <th className="py-4">Valor Total</th>
                 <th className="py-4 text-right">Ação</th>
               </tr>
@@ -391,7 +409,11 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                   <td className="py-4 uppercase">{record.paymentMethod === 'dinheiro' ? 'CAIXA FISICO' : 'PIX / BANCO'}</td>
                   <td className="py-4 font-black">{record.description}</td>
                   <td className="py-4 font-black text-indigo-600 uppercase">{(record as any).operator || 'SISTEMA'}</td>
-                  <td className="py-4 text-slate-400">{record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+                  <td className="py-4 text-slate-400">
+                    {record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
+                    {/* Exibe o horário ao lado da data no painel da tabela se houver */}
+                    {(record as any).time ? ` às ${(record as any).time}` : ''}
+                  </td>
                   <td className="py-4 font-black text-slate-800">{formatCurrency(record.value)}</td>
                   <td className="py-4 text-right">
                     <button onClick={() => handleReprintHistory(record)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors">Reimprimir</button>
