@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingCart, DollarSign, FileText, 
-  Scale, User, Briefcase, Sparkles, Truck, LogOut, UserCheck
+  Scale, User, Briefcase, Sparkles, Truck, LogOut
 } from 'lucide-react';
 
 // Importações do seu arquivo de configuração local
@@ -11,7 +11,7 @@ import {
 } from './firebase';
 
 // Importações diretas da biblioteca oficial do Firebase para corrigir o erro da Vercel
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 import { Product, CustomerPF, CustomerPJ, FinancialRecord, ActiveTab } from './types';
 
@@ -41,8 +41,30 @@ const App: React.FC = () => {
   const [customersPJ, setCustomersPJ] = useState<CustomerPJ[]>([]);
   const [financials, setFinancials] = useState<FinancialRecord[]>([]);
 
+  // Função auxiliar para inicializar a lista de novos operadores no banco caso não existam por ID padrão
+  const inicializarOperadoresPadrao = async () => {
+    const listaOperadores = ['RAFAEL', 'FÁBIO', 'ARBYS', 'JOHNNYS', 'KEVIN', 'ANDREA'];
+    for (const nomeOp of listaOperadores) {
+      try {
+        // Gera uma chave simulada de identificação baseada no nome para registro preventivo
+        const opIdRef = doc(db, 'usuarios', `op_${nomeOp.toLowerCase().replace(/[^a-z]/g, '')}`);
+        const snap = await getDoc(opIdRef);
+        if (!snap.exists()) {
+          await setDoc(opIdRef, {
+            nome: nomeOp,
+            role: 'operador'
+          });
+        }
+      } catch (e) {
+        console.error("Erro ao inicializar regras dos operadores:", e);
+      }
+    }
+  };
+
   // 1. Monitorar Autenticação e Buscar Cargo/Nome no Firestore
   useEffect(() => {
+    inicializarOperadoresPadrao();
+
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       
@@ -68,14 +90,16 @@ const App: React.FC = () => {
             
             notify(`Bem-vindo, ${nameIdentified}!`);
           } else {
+            // Caso tenha cadastro no Auth mas não no Firestore, assume operador por segurança
             setUserRole('operador');
-            setUserName(u.email?.split('@')[0] || 'Operador');
+            const fallbackName = u.email?.split('@')[0]?.toUpperCase() || 'OPERADOR';
+            setUserName(fallbackName);
             setActiveTab('pedidos');
           }
         } catch (error) {
           console.error("Erro ao buscar perfil do usuário:", error);
           setUserRole('operador');
-          setUserName(u.email?.split('@')[0] || 'Operador');
+          setUserName('OPERADOR');
           setActiveTab('pedidos');
         }
       } else {
@@ -227,7 +251,6 @@ const App: React.FC = () => {
             {activeTab === 'financeiro' && userRole === 'admin' && <FinanceiroView financials={financials} notify={notify} />}
             {activeTab === 'ai-insights' && userRole === 'admin' && <AIInsightsView financials={financials} products={products} />}
             
-            {/* AJUSTADO: Passando a propriedade financials que estava ausente e quebrando a tela */}
             {activeTab === 'notas-fiscais' && userRole === 'admin' && (
               <NFView 
                 customersPF={customersPF} 
