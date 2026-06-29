@@ -6,7 +6,8 @@ import {
 
 // Importações do seu arquivo de configuração local
 import { 
-  auth, db, signInWithEmailAndPassword, signOut, onAuthStateChanged, FirebaseUser
+  auth, db, signInWithEmailAndPassword, signOut, onAuthStateChanged, FirebaseUser,
+  collection, onSnapshot, query, orderBy
 } from './firebase';
 
 // Importações da biblioteca oficial do Firebase
@@ -142,7 +143,41 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [password]);
 
-  // 2. Lógica para trocar a senha padrão por uma nova
+  // 2. Carregar Dados em Tempo Real para Qualquer Nível de Usuário Autenticado
+  useEffect(() => {
+    if (!user) {
+      setProducts([]);
+      setCustomersPF([]);
+      setCustomersPJ([]);
+      setFinancials([]);
+      return;
+    }
+
+    const unsubProducts = onSnapshot(collection(db, 'products'), (s) => {
+      setProducts(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
+    }, (error) => console.error("Erro Produtos:", error));
+
+    const unsubPF = onSnapshot(collection(db, 'customersPF'), (s) => {
+      setCustomersPF(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
+    }, (error) => console.error("Erro Clientes PF:", error));
+
+    const unsubPJ = onSnapshot(collection(db, 'customersPJ'), (s) => {
+      setCustomersPJ(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
+    }, (error) => console.error("Erro Clientes PJ:", error));
+
+    const unsubFinancials = onSnapshot(
+      query(collection(db, 'financials'), orderBy('date', 'desc')),
+      (s) => {
+        setFinancials(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
+      }, (error) => console.error("Erro Financeiro:", error)
+    );
+
+    return () => {
+      unsubProducts(); unsubPF(); unsubPJ(); unsubFinancials();
+    };
+  }, [user, userRole]);
+
+  // 3. Lógica para trocar a senha padrão por uma nova
   const handleForceChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 6) {
@@ -158,7 +193,7 @@ const App: React.FC = () => {
     try {
       if (auth.currentUser) {
         await updatePassword(auth.currentUser, newPassword);
-        notify("Senha atualizada com sucesso!");
+        notify("Senha updated com sucesso!");
         setIsFirstLogin(false);
         setNewPassword('');
         setConfirmPassword('');
