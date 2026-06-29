@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Send, CheckCircle2, AlertCircle, Building, Truck, User, Info, Package, ShieldAlert } from 'lucide-react';
-import { CustomerPF, CustomerPJ } from '../types';
+import { FileText, Send, CheckCircle2, Info } from 'lucide-react';
+import { CustomerPF, CustomerPJ, FinancialRecord } from '../types';
 
 interface Props {
   customersPF: CustomerPF[];
   customersPJ: CustomerPJ[];
+  financials: FinancialRecord[]; // Adicionado corretamente aqui
   notify: (m: string) => void;
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
-const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
+const NFView: React.FC<Props> = ({ customersPF, customersPJ, financials, notify }) => {
   const [loading, setLoading] = useState(false);
   const [recipientType, setRecipientType] = useState<'CPF' | 'CNPJ'>('CNPJ');
   const [docNumber, setDocNumber] = useState('');
@@ -119,7 +120,6 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
 
       if (response.ok) {
         notify(result.mensagem || "Nota Fiscal Eletrônica transmitida com sucesso!");
-        // Opcional: Baixar o DANFE automaticamente se a API retornar um link em result.pdfUrl
         if (result.pdfUrl) {
           window.open(result.pdfUrl, '_blank');
         }
@@ -150,6 +150,9 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
     { code: '4707.90.00', desc: 'Papel/Papelão para reciclagem' },
     { code: '3915.90.00', desc: 'Plástico para reciclagem' },
   ];
+
+  // Garante uma contagem segura mesmo se financials não tiver carregado ainda
+  const totalDocuments = financials ? financials.filter(f => f.category === 'Vendas').length : 0;
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-20 animate-in fade-in">
@@ -527,7 +530,7 @@ const NFView: React.FC<Props> = ({ customersPF, customersPJ, notify }) => {
             <div className="p-3 bg-slate-50 text-slate-400 rounded-2xl"><FileText size={20}/></div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Mês Atual</p>
-              <p className="text-sm font-black text-slate-800 mt-1">{financials.filter(f => f.category === 'Vendas').length} Documentos</p>
+              <p className="text-sm font-black text-slate-800 mt-1">{totalDocuments} Documentos</p>
             </div>
          </div>
          <div className="bg-white p-6 rounded-3xl border border-slate-100 flex items-center gap-4">
