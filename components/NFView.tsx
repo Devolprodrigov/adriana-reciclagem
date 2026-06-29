@@ -1,72 +1,70 @@
-import React, { useState } from 'react';
-import { FileText, ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react';
+import React from 'react';
+import { FileText, ExternalLink, ShieldCheck, ArrowUpRight, HelpCircle } from 'lucide-react';
 
 const NFView: React.FC = () => {
-  const [iframeLoading, setIframeLoading] = useState(true);
   const urlEmissorSebrae = "https://18560350000178.emissornfe.sebrae.com.br/index-sebrae.html#/home";
 
   return (
-    <div className="h-[calc(100vh-140px)] w-full flex flex-col space-y-4 animate-in fade-in duration-500">
+    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
       
-      {/* BARRA DE CONTROLE INTEGRADA */}
-      <div className="bg-white px-8 py-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
-            <FileText size={20} />
+      {/* CARD PRINCIPAL DE ACESSO */}
+      <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col items-center text-center space-y-6">
+        <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center shadow-sm">
+          <FileText size={40} />
+        </div>
+        
+        <div className="space-y-2 max-w-lg">
+          <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Emissor Fiscal Integrado</h3>
+          <p className="text-xs font-bold text-slate-400">
+            Por normas de segurança da SEFAZ e do SEBRAE, o painel de faturamento deve ser operado em ambiente isolado e seguro para garantir a validação do seu Certificado Digital.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-wider">
+          <ShieldCheck size={14} /> Link Verificado e Criptografado
+        </div>
+
+        <hr className="w-full border-slate-100" />
+
+        {/* BOTÃO DE DISPARO RÁPIDO */}
+        <a 
+          href={urlEmissorSebrae} 
+          target="_blank" 
+          rel="noreferrer"
+          className="w-full max-w-md py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 group"
+        >
+          Acessar Painel SEBRAE Agora 
+          <ArrowUpRight size={16} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+        </a>
+      </div>
+
+      {/* CARD DE INFORMAÇÕES EXTRAS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 flex gap-4 items-start">
+          <div className="p-2.5 bg-slate-50 text-slate-500 rounded-xl shrink-0">
+            <ExternalLink size={16} />
           </div>
           <div>
-            <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Emissor SEBRAE Integrado</h3>
-            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1">
-              <ShieldCheck size={12} /> Conexão Segura Oficial
+            <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-wider">Sessão Exclusiva</h4>
+            <p className="text-[11px] font-medium text-slate-400 mt-1">
+              O link acima aponta diretamente para o ambiente dedicado da **Adriana Reciclagem**, agilizando o preenchimento dos dados.
             </p>
           </div>
         </div>
-        
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {/* BOTÃO PARA FORÇAR ATUALIZAÇÃO DO IFRAME SE NECESSÁRIO */}
-          <button 
-            onClick={() => {
-              setIframeLoading(true);
-              const iframe = document.getElementById('sebrae-iframe') as HTMLIFrameElement;
-              if (iframe) iframe.src = urlEmissorSebrae;
-            }}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-50 border border-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase hover:bg-slate-100 transition-all"
-          >
-            <RefreshCw size={12} className={iframeLoading ? 'animate-spin' : ''} /> Recarregar Painel
-          </button>
 
-          {/* LINK EXTERNO DE SEGURANÇA CASO QUEIRA ABRIR FORA */}
-          <a 
-            href={urlEmissorSebrae} 
-            target="_blank" 
-            rel="noreferrer"
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100"
-          >
-            Abrir em Nova Aba <ExternalLink size={12} />
-          </a>
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 flex gap-4 items-start">
+          <div className="p-2.5 bg-slate-50 text-slate-500 rounded-xl shrink-0">
+            <HelpCircle size={16} />
+          </div>
+          <div>
+            <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-wider">Fechamento de Caixa</h4>
+            <p className="text-[11px] font-medium text-slate-400 mt-1">
+              Após emitir a nota fiscal por lá, lembre-se de conferir se a movimentação financeira foi devidamente lançada na aba **Financeiro** do seu ERP.
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* JANELA DE VISUALIZAÇÃO DA INTERNET (IFRAME) */}
-      <div className="flex-1 bg-white rounded-[2.5rem] border border-slate-100 shadow-xl overflow-hidden relative min-h-[500px]">
-        {iframeLoading && (
-          <div className="absolute inset-0 bg-slate-50 flex flex-col items-center justify-center gap-3 z-50">
-            <div className="animate-spin h-10 w-10 border-4 border-indigo-600 border-t-transparent rounded-full"></div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest animate-pulse">
-              Conectando com o Servidor do SEBRAE...
-            </p>
-          </div>
-        )}
-        
-        <iframe
-          id="sebrae-iframe"
-          src={urlEmissorSebrae}
-          title="Emissor Nota Fiscal SEBRAE"
-          className="w-full h-full border-none"
-          onLoad={() => setIframeLoading(false)}
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-        />
-      </div>
     </div>
   );
 };
