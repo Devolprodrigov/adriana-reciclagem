@@ -227,7 +227,15 @@ const App: React.FC = () => {
             {activeTab === 'financeiro' && userRole === 'admin' && <FinanceiroView financials={financials} notify={notify} />}
             {activeTab === 'ai-insights' && userRole === 'admin' && <AIInsightsView financials={financials} products={products} />}
             
-            {activeTab === 'notas-fiscais' && userRole === 'admin' && <NFView customersPF={customersPF} customersPJ={customersPJ} notify={notify} />}
+            {/* AJUSTADO: Passando a propriedade financials que estava ausente e quebrando a tela */}
+            {activeTab === 'notas-fiscais' && userRole === 'admin' && (
+              <NFView 
+                customersPF={customersPF} 
+                customersPJ={customersPJ} 
+                financials={financials} 
+                notify={notify} 
+              />
+            )}
             {activeTab === 'mtr' && userRole === 'admin' && <MTRView notify={notify} />}
           </div>
         </div>
