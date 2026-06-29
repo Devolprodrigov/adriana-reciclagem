@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, Package, ShoppingCart, DollarSign, FileText, 
-  Scale, User, Briefcase, Sparkles, Truck, LogOut
+  Scale, User, Briefcase, Sparkles, Truck, LogOut, KeyRound
 } from 'lucide-react';
 
 // Importações do seu arquivo de configuração local
 import { 
-  auth, db, signInWithEmailAndPassword, signOut, onAuthStateChanged, FirebaseUser,
-  collection, onSnapshot, query, orderBy
+  auth, db, signInWithEmailAndPassword, signOut, onAuthStateChanged, FirebaseUser
 } from './firebase';
 
-// Importações diretas da biblioteca oficial do Firebase para corrigir o erro da Vercel
+// Importações da biblioteca oficial do Firebase
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { updatePassword } from 'firebase/auth';
 
 import { Product, CustomerPF, CustomerPJ, FinancialRecord, ActiveTab } from './types';
 
@@ -31,37 +31,39 @@ const App: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [userRole, setUserRole] = useState<string | null>(null); // Estado para armazenar o cargo (admin/operador)
-  const [userName, setUserName] = useState<string>('Operador'); // Estado para armazenar o nome real do operador
+  const [userRole, setUserRole] = useState<string | null>(null); 
+  const [userName, setUserName] = useState<string>('Operador'); 
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Estados para controle de troca de senha obrigatória
+  const [isFirstLogin, setIsFirstLogin] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [customersPF, setCustomersPF] = useState<CustomerPF[]>([]);
   const [customersPJ, setCustomersPJ] = useState<CustomerPJ[]>([]);
   const [financials, setFinancials] = useState<FinancialRecord[]>([]);
 
-  // Função auxiliar para inicializar a lista de novos operadores no banco caso não existam por ID padrão
+  // Função auxiliar para inicializar a lista de novos operadores no banco
   const inicializarOperadoresPadrao = async () => {
     const listaOperadores = ['RAFAEL', 'FÁBIO', 'ARBYS', 'JOHNNYS', 'KEVIN', 'ANDREA'];
     for (const nomeOp of listaOperadores) {
       try {
-        // Gera uma chave simulada de identificação baseada no nome para registro preventivo
         const opIdRef = doc(db, 'usuarios', `op_${nomeOp.toLowerCase().replace(/[^a-z]/g, '')}`);
         const snap = await getDoc(opIdRef);
         if (!snap.exists()) {
-          await setDoc(opIdRef, {
-            nome: nomeOp,
-            role: 'operador'
-          });
+          await setDoc(opIdRef, { nome: nomeOp, role: 'operador' });
         }
       } catch (e) {
-        console.error("Erro ao inicializar regras dos operadores:", e);
+        console.error(e);
       }
     }
   };
 
-  // 1. Monitorar Autenticação e Buscar Cargo/Nome no Firestore
+  // 1. Monitorar Autenticação e Buscar Cargo/Nome
   useEffect(() => {
     inicializarOperadoresPadrao();
 
@@ -69,6 +71,11 @@ const App: React.FC = () => {
       setUser(u);
       
       if (u) {
+        // Se a senha usada no login foi a padrão, ativa o bloqueio de primeiro acesso
+        if (password === '123456') {
+          setIsFirstLogin(true);
+        }
+
         try {
           const userDocRef = doc(db, 'usuarios', u.uid);
           const userDocSnap = await getDoc(userDocRef);
@@ -78,7 +85,6 @@ const App: React.FC = () => {
             const role = userData.role || 'operador';
             setUserRole(role); 
             
-            // Se for operador, força a aba inicial para 'pedidos', senão vai pro 'dashboard'
             if (role === 'operador') {
               setActiveTab('pedidos');
             } else {
@@ -87,17 +93,12 @@ const App: React.FC = () => {
             
             const nameIdentified = userData.nome || u.email?.split('@')[0] || 'Usuário';
             setUserName(nameIdentified);
-            
-            notify(`Bem-vindo, ${nameIdentified}!`);
           } else {
-            // Caso tenha cadastro no Auth mas não no Firestore, assume operador por segurança
             setUserRole('operador');
-            const fallbackName = u.email?.split('@')[0]?.toUpperCase() || 'OPERADOR';
-            setUserName(fallbackName);
+            setUserName(u.email?.split('@')[0]?.toUpperCase() || 'OPERADOR');
             setActiveTab('pedidos');
           }
         } catch (error) {
-          console.error("Erro ao buscar perfil do usuário:", error);
           setUserRole('operador');
           setUserName('OPERADOR');
           setActiveTab('pedidos');
@@ -106,45 +107,48 @@ const App: React.FC = () => {
         setUserRole(null);
         setUserName('Operador');
         setActiveTab('dashboard');
+        setIsFirstLogin(false);
       }
       
       setIsAuthReady(true);
     });
     return () => unsubscribe();
-  }, []);
+  }, [password]);
 
-  // 2. Carregar Dados em Tempo Real
-  useEffect(() => {
-    const unsubProducts = onSnapshot(collection(db, 'products'), (s) => {
-      setProducts(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
-    }, (error) => console.error("Erro Produtos:", error));
+  // 2. Lógica para trocar a senha padrão por uma nova
+  const handleForceChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      alert("A nova senha precisa ter pelo menos 6 dígitos.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      alert("As senhas digitadas não conferem.");
+      return;
+    }
 
-    const unsubPF = onSnapshot(collection(db, 'customersPF'), (s) => {
-      setCustomersPF(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
-    }, (error) => console.error("Erro Clientes PF:", error));
-
-    const unsubPJ = onSnapshot(collection(db, 'customersPJ'), (s) => {
-      setCustomersPJ(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
-    }, (error) => console.error("Erro Clientes PJ:", error));
-
-    const unsubFinancials = onSnapshot(
-      query(collection(db, 'financials'), orderBy('date', 'desc')),
-      (s) => {
-        setFinancials(s.docs.map(d => ({ ...d.data(), id: d.id })) as any);
-      }, (error) => console.error("Erro Financeiro:", error)
-    );
-
-    return () => {
-      unsubProducts(); unsubPF(); unsubPJ(); unsubFinancials();
-    };
-  }, [user]);
+    setPasswordLoading(true);
+    try {
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, newPassword);
+        notify("Senha atualizada com sucesso!");
+        setIsFirstLogin(false);
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (err: any) {
+      alert("Erro ao atualizar senha. Se necessário, saia e faça login novamente.");
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
-      alert("E-mail ou senha inválidos. Verifique se o usuário existe no Firebase.");
+      alert("E-mail ou senha inválidos. Verifique as credenciais.");
     }
   };
 
@@ -159,6 +163,7 @@ const App: React.FC = () => {
     </div>
   );
 
+  // TELA 1: LOGIN COMUM
   if (!user) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-900 p-6">
@@ -175,7 +180,39 @@ const App: React.FC = () => {
     );
   }
 
-  // --- MONTAGEM DINÂMICA DO MENU BASEADO NO CARGO DO USUÁRIO ---
+  // TELA 2: TRAVA DE PRIMEIRO ACESSO (Obriga a mudar se a senha for 123456)
+  if (isFirstLogin) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-slate-900 p-6">
+        <form onSubmit={handleForceChangePassword} className="max-w-md w-full bg-white rounded-3xl p-10 shadow-2xl space-y-6">
+          <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+            <KeyRound size={28} />
+          </div>
+          <div className="text-center space-y-2">
+            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Primeiro Acesso</h3>
+            <p className="text-xs font-bold text-slate-400">
+              Por segurança, você deve alterar a sua senha provisória antes de continuar.
+            </p>
+          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Nova Senha</label>
+              <input type="password" placeholder="Mínimo 6 caracteres" className="w-full p-4 bg-slate-100 rounded-2xl outline-none font-bold text-sm" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Confirme a Nova Senha</label>
+              <input type="password" placeholder="Repita a senha acima" className="w-full p-4 bg-slate-100 rounded-2xl outline-none font-bold text-sm" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+            </div>
+          </div>
+          <button type="submit" disabled={passwordLoading} className="w-full bg-amber-500 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-amber-600 transition-all shadow-md disabled:opacity-50">
+            {passwordLoading ? 'Gravando...' : 'Salvar Nova Senha'}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // CONFIGURAÇÃO DOS MENUS
   const menuItems = userRole === 'admin' 
     ? [
         { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18}/> },
@@ -225,7 +262,7 @@ const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {notification && (
-          <div className="fixed top-8 right-8 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl z-50 animate-in fade-in zoom-in border-l-4 border-emerald-500">
+          <div className="fixed top-8 right-8 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl z-50 animate-in fade-in">
             <span className="text-[10px] font-black uppercase tracking-widest">{notification}</span>
           </div>
         )}
