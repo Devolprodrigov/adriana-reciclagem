@@ -27,7 +27,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   const [paymentMethod, setPaymentMethod] = useState<string>('banco');
   const [searchTerm, setSearchTerm] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string} | null>(null);
+  const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string, type?: string} | null>(null);
 
   const currentYearMonth = useMemo(() => {
     const d = new Date();
@@ -111,8 +111,8 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   );
   
   const allPartners = useMemo(() => {
-    const pf = customersPF.map(c => ({ id: c.id, name: c.name, type: 'PF' }));
-    const pj = customersPJ.map(c => ({ id: c.id, name: c.companyName, type: 'PJ' }));
+    const pf = customersPF.map(c => ({ id: c.id, name: c.name, type: 'PF', pixKey: (c as any).pixKey || (c as any).chavePix }));
+    const pj = customersPJ.map(c => ({ id: c.id, name: c.companyName, type: 'PJ', pixKey: (c as any).pixKey || (c as any).chavePix }));
     return [...pf, ...pj].filter(p => p.name.toLowerCase().includes(customerSearch.toLowerCase()));
   }, [customersPF, customersPJ, customerSearch]);
 
@@ -133,7 +133,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
-  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string, operator?: string, customTime?: string) => {
+  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string, operator?: string, customTime?: string, partnerId?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     
@@ -142,8 +142,18 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const dateDisplay = customDate ? `${customDate}, ${timeDisplay}` : `${now.toLocaleDateString('pt-BR')}, ${timeDisplay}`;
     const displayMethod = methodUsed === 'dinheiro' ? 'DINHEIRO VIVO (CAIXA)' : 'PIX / BANCO';
     
-    // BUSCA AUTOMATICAMENTE A CHAVE PIX SALVA NO LOCALSTORAGE (OU USA UM VALOR PADRÃO CASO NÃO EXISTA)
-    const chavePixSistema = localStorage.getItem('empresa_chave_pix') || '00.000.000/0001-00';
+    // BUSCA A CHAVE PIX DO CADASTRO DO CLIENTE (PF ou PJ)
+    let clientPix = '';
+    if (partnerId) {
+      const foundPF = customersPF.find(c => c.id === partnerId);
+      const foundPJ = customersPJ.find(c => c.id === partnerId);
+      if (foundPF) {
+        clientPix = (foundPF as any).pixKey || (foundPF as any).chavePix || '';
+      } else if (foundPJ) {
+        clientPix = (foundPJ as any).pixKey || (foundPJ as any).chavePix || '';
+      }
+    }
+    const chavePixSistema = clientPix || 'Não cadastrada';
 
     const itemsHtml = items.map(i => {
       const name = i.productName || i.product?.name || i.name || 'Material';
@@ -219,8 +229,9 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const customDate = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : undefined;
     const savedOperator = (record as any).operator || 'SISTEMA';
     const savedTime = (record as any).time || undefined;
+    const savedPartnerId = (record as any).partnerId || undefined;
     
-    printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator, savedTime);
+    printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator, savedTime, savedPartnerId);
   };
 
   const handleFinish = async () => {
@@ -253,6 +264,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         status: 'pago',
         paymentMethod: currentMethod,
         operator: currentOperator,
+        partnerId: currentPartner.id, // Salva o ID do parceiro para recuperar na segunda via
         productsNameCleaned: productsListText,
         totalQtySaved: totalQtyCalculated,
         category: currentCart[0]?.product.name || (currentOrderType === 'venda' ? 'Vendas' : 'COMPRA DE MATERIAIS RECO'),
@@ -260,7 +272,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       });
 
       await batch.commit();
-      printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator, exactTime);
+      printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator, exactTime, currentPartner.id);
 
       setCart([]);
       setSelectedPartner(null);
