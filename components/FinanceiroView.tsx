@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { FileText, RefreshCw, Plus, ArrowUpCircle, ArrowDownCircle, Calendar, Filter, Landmark, Search, Trash2, Coins } from 'lucide-react';
+import { FileText, RefreshCw, Plus, Calendar, Landmark, Search, Trash2, Coins, Award } from 'lucide-react';
 import { collection, addDoc, serverTimestamp, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { FinancialRecord } from '../types';
@@ -13,6 +13,7 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 
 
 const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
   const [showModal, setShowModal] = useState(false);
+  const [showTop100Modal, setShowTop100Modal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCleaning, setIsCleaning] = useState(false);
   const [searchDescription, setSearchDescription] = useState('');
@@ -32,7 +33,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
   const [endDate, setEndDate] = useState<string>(defaultDates.lastDay);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- LISTA DE CATEGORIAS OFICIAIS SOLICITADAS ---
+  // --- LISTA DE CATEGORIAS OFICIAIS ---
   const categoriasPredefinidas = [
     "VENDA",
     "TROCA DE PIX POR DINHEIRO VIVO",
@@ -92,29 +93,54 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
   });
 
   // --- STATS CALCULADOS ---
-  // 1. Saldo Real Geral (Banco + Caixinha)
   const totalHistoricoReceita = financials.filter(f => f.type === 'receita').reduce((a, b) => a + Number(b.value || 0), 0);
   const totalHistoricoDespesa = financials.filter(f => f.type === 'despesa').reduce((a, b) => a + Number(b.value || 0), 0);
   const saldoTotalGeral = totalHistoricoReceita - totalHistoricoDespesa;
 
-  // 2. Quadro Caixinha (Dinheiro Vivo em mãos no Local)
-  // Calcula tudo que foi marcado com a forma de pagamento 'dinheiro' no histórico geral
   const caixinhaEntradas = financials.filter(f => f.type === 'receita' && f.paymentMethod === 'dinheiro').reduce((a, b) => a + Number(b.value || 0), 0);
   const caixinhaSaidas = financials.filter(f => f.type === 'despesa' && f.paymentMethod === 'dinheiro').reduce((a, b) => a + Number(b.value || 0), 0);
-  
-  // Tratamento da Categoria Especial de Troca de PIX por Dinheiro Vivo (Gera dinheiro físico no local)
   const trocasPixParaDinheiro = financials.filter(f => f.category === 'TROCA DE PIX POR DINHEIRO VIVO').reduce((a, b) => a + Number(b.value || 0), 0);
   
   const saldoCaixinhaFisico = (caixinhaEntradas + trocasPixParaDinheiro) - caixinhaSaidas;
 
-  // 3. Saldo Líquido na Conta Bancária (Total Geral menos o que está em espécie)
-  const saldoBancarioDisponivel = saldoTotalGeral - saldoCaixinhaFisico;
-
-  // Stats do período filtrado
   const periodStats = {
     revenue: filteredFinancials.filter(f => f.type === 'receita').reduce((a, b) => a + Number(b.value || 0), 0),
     expense: filteredFinancials.filter(f => f.type === 'despesa').reduce((a, b) => a + Number(b.value || 0), 0),
   };
+
+  // --- CÁLCULO TOP 100 CLIENTES/PARCEIROS BASEADO NO FINANCEIRO ---
+  const top100Partners = useMemo(() => {
+    const partnerMap: { [key: string]: { name: string; totalValue: number; visitCount: number; uniqueWeeks: Set<number> } } = {};
+
+    financials.forEach(f => {
+      if (!f.description) return;
+      const parts = f.description.split(' - ');
+      if (parts.length > 1) {
+        const partnerName = parts[1].trim().toUpperCase();
+        if (!partnerMap[partnerName]) {
+          partnerMap[partnerName] = { name: partnerName, totalValue: 0, visitCount: 0, uniqueWeeks: new Set() };
+        }
+        partnerMap[partnerName].totalValue += Number(f.value || 0);
+        partnerMap[partnerName].visitCount += 1;
+
+        if (f.date) {
+          const dateObj = new Date(f.date + 'T12:00:00');
+          const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
+          const weekNum = Math.ceil(((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000) + startOfYear.getDay() + 1) / 7);
+          partnerMap[partnerName].uniqueWeeks.add(weekNum);
+        }
+      }
+    });
+
+    return Object.values(partnerMap)
+      .map(p => ({
+        ...p,
+        uniqueWeeksCount: p.uniqueWeeks.size,
+        isFrequent: p.uniqueWeeks.size >= 4 || p.visitCount >= 8
+      }))
+      .sort((a, b) => b.totalValue - a.totalValue || b.visitCount - a.visitCount)
+      .slice(0, 100);
+  }, [financials]);
 
   const handleClearAll = async () => {
     const confirm = window.confirm("🚨 ATENÇÃO: Isso vai apagar TODOS os lançamentos financeiros permanentemente do Firebase. Confirma?");
@@ -167,7 +193,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
               value: Math.abs(cleanValue),
               date: formattedDate,
               status: 'pago',
-              paymentMethod: 'banco', // PDF presume movimentação bancária
+              paymentMethod: 'banco',
               category: 'IMPORTADO PDF',
               createdAt: serverTimestamp()
             });
@@ -193,7 +219,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         type: fd.get('type') as any,
         description: (fd.get('description') as string).toUpperCase(),
         category: (fd.get('category') as string).toUpperCase(),
-        paymentMethod: fd.get('paymentMethod') as string, // Capta se é PIX/Banco ou Dinheiro Vivo
+        paymentMethod: fd.get('paymentMethod') as string,
         value: Math.abs(Number(fd.get('value'))),
         date: fd.get('date') as string,
         status: 'pago',
@@ -211,9 +237,12 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Financeiro Industrial</h3>
-          <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Controle de Fluxo e Conciliação</p>
+          <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Controle de Fluxo, Caixinha e Parceiros</p>
         </div>
         <div className="flex flex-wrap gap-3 w-full md:w-auto">
+          <button onClick={() => setShowTop100Modal(true)} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-4 bg-amber-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider shadow-lg hover:bg-amber-600 transition-all">
+            <Award size={16}/> TOP 100 PARCEIROS
+          </button>
           <button onClick={handleClearAll} disabled={isCleaning} className="flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-2xl text-[10px] font-black uppercase hover:bg-rose-100 transition-all">
             <Trash2 size={14}/> {isCleaning ? 'ZERANDO...' : 'ZERAR CAIXA'}
           </button>
@@ -227,7 +256,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         </div>
       </div>
 
-      {/* QUADROS DE RESUMO INTEGRADOS (SALDO TOTAL / DISPONÍVEL BANCO / CAIXINHA FISICO) */}
+      {/* QUADROS DE RESUMO INTEGRADOS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-slate-900 p-6 rounded-[2rem] text-white shadow-xl relative overflow-hidden group">
           <div className="absolute right-[-10px] top-[-10px] opacity-10"><Landmark size={90} /></div>
@@ -237,7 +266,6 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
           </div>
         </div>
 
-        {/* NOVO QUADRO: CAIXINHA DINHEIRO VIVO */}
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm relative overflow-hidden group">
           <div className="absolute right-[-10px] top-[-10px] opacity-5 text-emerald-600"><Coins size={90} /></div>
           <div className="flex items-center gap-2 mb-2">
@@ -284,7 +312,7 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
           </div>
         </div>
         <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-           Exibindo {filteredFinancials.length} transações
+            Exibindo {filteredFinancials.length} transações
         </div>
       </div>
 
@@ -328,7 +356,56 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
         </div>
       </div>
 
-      {/* MODAL COM CAMPOS ADAPTADOS */}
+      {/* MODAL TOP 100 PARCEIROS */}
+      {showTop100Modal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto max-h-[85vh] flex flex-col">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-[3rem]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center font-black">
+                  <Award size={22} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Top 100 Parceiros (Financeiro)</h2>
+                  <p className="text-xs font-bold text-slate-400">Maiores movimentações e constância de frequência ao longo do ano</p>
+                </div>
+              </div>
+              <button onClick={() => setShowTop100Modal(false)} className="font-black text-slate-400 hover:text-slate-700 bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs uppercase">Fechar</button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest sticky top-0">
+                  <tr>
+                    <th className="px-6 py-4"># Posição</th>
+                    <th className="px-6 py-4">Nome do Parceiro</th>
+                    <th className="px-6 py-4">Semanas Ativas</th>
+                    <th className="px-6 py-4">Total de Visitas</th>
+                    <th className="px-6 py-4 text-right">Volume Total Movimentado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {top100Partners.map((p, index) => (
+                    <tr key={index} className="hover:bg-slate-50/50">
+                      <td className="px-6 py-4 font-black text-indigo-600">
+                        {index === 0 ? '🥇 1º' : index === 1 ? '🥈 2º' : index === 2 ? '🥉 3º' : `${index + 1}º`}
+                      </td>
+                      <td className="px-6 py-4 font-black text-slate-800 text-sm uppercase">{p.name}</td>
+                      <td className="px-6 py-4 font-bold text-xs text-slate-600">{p.uniqueWeeksCount} semanas distintas</td>
+                      <td className="px-6 py-4 font-black text-xs text-slate-700">{p.visitCount} vezes</td>
+                      <td className="px-6 py-4 text-right font-black text-emerald-600 text-xs">
+                        {formatCurrency(p.totalValue)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NOVO LANÇAMENTO */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[3rem] p-10 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -343,7 +420,6 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
                  </label>
               </div>
 
-              {/* SELEÇÃO DO MEIO DE PAGAMENTO: DIRECIONA PRO CAIXINHA OU BANCO */}
               <div>
                 <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Meio de Movimentação</label>
                 <select name="paymentMethod" required className="w-full bg-slate-50 p-4 rounded-2xl font-black text-xs uppercase outline-none cursor-pointer">
@@ -352,7 +428,6 @@ const FinanceiroView: React.FC<Props> = ({ financials, notify }) => {
                 </select>
               </div>
 
-              {/* SELEÇÃO DE CATEGORIAS OFICIAIS REESTRUTURADA */}
               <div>
                 <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Categoria de Lançamento</label>
                 <select name="category" required className="w-full bg-slate-50 p-4 rounded-2xl font-black text-xs uppercase outline-none cursor-pointer">
