@@ -142,8 +142,8 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const dateDisplay = customDate ? `${customDate}, ${timeDisplay}` : `${now.toLocaleDateString('pt-BR')}, ${timeDisplay}`;
     const displayMethod = methodUsed === 'dinheiro' ? 'DINHEIRO VIVO (CAIXA)' : 'PIX / BANCO';
     
-    // DEFINA A CHAVE PIX AQUI
-    const chavePixSistema = "SUA-CHAVE-PIX-AQUI"; 
+    // BUSCA AUTOMATICAMENTE A CHAVE PIX SALVA NO LOCALSTORAGE (OU USA UM VALOR PADRÃO CASO NÃO EXISTA)
+    const chavePixSistema = localStorage.getItem('empresa_chave_pix') || '00.000.000/0001-00';
 
     const itemsHtml = items.map(i => {
       const name = i.productName || i.product?.name || i.name || 'Material';
