@@ -38,7 +38,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentYearMonth);
 
-  // Balança States
   const [scaleWeight, setScaleWeight] = useState<number>(0);
   const [isScaleConnected, setIsScaleConnected] = useState(false);
   const portRef = useRef<any>(null);
@@ -134,18 +133,18 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
-  // FUNÇÃO DE IMPRESSÃO PADRONIZADA COM DATA E HORA PRECISAS
   const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string, operator?: string, customTime?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     
-    // Constrói a linha completa de data e hora de forma idêntica à imagem impressa
     const now = new Date();
     const timeDisplay = customTime || now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const dateDisplay = customDate ? `${customDate}, ${timeDisplay}` : `${now.toLocaleDateString('pt-BR')}, ${timeDisplay}`;
-    
     const displayMethod = methodUsed === 'dinheiro' ? 'DINHEIRO VIVO (CAIXA)' : 'PIX / BANCO';
     
+    // DEFINA A CHAVE PIX AQUI
+    const chavePixSistema = "SUA-CHAVE-PIX-AQUI"; 
+
     const itemsHtml = items.map(i => {
       const name = i.productName || i.product?.name || i.name || 'Material';
       const quantity = Number(i.quantity || 1);
@@ -189,10 +188,9 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           DATA: ${dateDisplay}<br>
           PARCEIRO: ${partnerName}<br>
           FORMA: ${displayMethod}<br>
+          ${methodUsed !== 'dinheiro' ? `CHAVE PIX: ${chavePixSistema}<br>` : ''}
           OPERADOR: ${operator || 'SISTEMA'}<hr>
-          
           ${itemsHtml}
-          
           <hr>
           <span style="font-size: 12px;"><strong>TOTAL GERAL: ${formatCurrency(totalVal)}</strong></span>
           <script>window.onload = () => { window.print(); window.close(); };</script>
@@ -202,11 +200,9 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     printWindow.document.close();
   };
 
-  // RECONSTRÓI RETROATIVAMENTE OS PRODUTOS INCLUINDO A HORA REGISTRADA
   const handleReprintHistory = (record: FinancialRecord) => {
     const type: 'compra' | 'venda' = record.type === 'receita' ? 'venda' : 'compra';
     const partnerName = record.description.split(' - ')[1] || 'Não Identificado';
-    
     let finalProductName = (record as any).productsNameCleaned;
 
     if (!finalProductName) {
@@ -219,34 +215,24 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
     const savedQty = (record as any).totalQtySaved || 1;
     const computedPrice = (record as any).totalQtySaved ? (record.value / savedQty) : record.value;
-
-    const mockItems = [{
-      productName: finalProductName.toUpperCase(),
-      quantity: savedQty,
-      price: computedPrice
-    }];
-
+    const mockItems = [{ productName: finalProductName.toUpperCase(), quantity: savedQty, price: computedPrice }];
     const customDate = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : undefined;
     const savedOperator = (record as any).operator || 'SISTEMA';
-    const savedTime = (record as any).time || undefined; // Recupera a hora original do banco
+    const savedTime = (record as any).time || undefined;
     
     printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator, savedTime);
   };
 
   const handleFinish = async () => {
     if (cart.length === 0 || !selectedPartner) return;
-    
     const currentOrderType = orderType;
     const currentCart = [...cart];
     const currentPartner = { ...selectedPartner };
     const currentTotal = total;
     const currentMethod = paymentMethod;
     const currentOperator = operatorName;
-    
     const productsListText = currentCart.map(i => i.product.name).join(', ');
     const totalQtyCalculated = currentCart.reduce((sum, i) => sum + i.quantity, 0);
-    
-    // Captura a hora exata da transação
     const exactTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     try {
@@ -263,19 +249,17 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         description: `${currentOrderType.toUpperCase()} - ${currentPartner.name}`,
         value: currentTotal,
         date: new Date().toISOString().split('T')[0],
-        time: exactTime, // Salva a hora exata da operação de forma explícita no banco
+        time: exactTime,
         status: 'pago',
         paymentMethod: currentMethod,
         operator: currentOperator,
-        productsNameCleaned: productsListText,     
-        totalQtySaved: totalQtyCalculated,         
+        productsNameCleaned: productsListText,
+        totalQtySaved: totalQtyCalculated,
         category: currentCart[0]?.product.name || (currentOrderType === 'venda' ? 'Vendas' : 'COMPRA DE MATERIAIS RECO'),
         createdAt: serverTimestamp()
       });
 
       await batch.commit();
-      
-      // Imprime o cupom passando a hora capturada no momento exato
       printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator, exactTime);
 
       setCart([]);
@@ -298,7 +282,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in">
-      {/* Bloco Esquerdo */}
       <div className="lg:col-span-8 space-y-6">
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
           <div className="flex justify-between items-center border-b border-slate-50 pb-6">
@@ -313,16 +296,15 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                 </button>
              </div>
           </div>
-
           <div className="relative">
-             <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Selecione o Cliente/Fornecedor..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-              {customerSearch && !selectedPartner && (
-                <div className="absolute bg-white shadow-xl rounded-2xl z-50 w-full p-2 border border-slate-100 mt-1">
-                  {allPartners.slice(0, 5).map(p => (
-                    <button key={p.id} onClick={() => { setSelectedPartner(p); setCustomerSearch(p.name); }} className="w-full text-left p-3 hover:bg-slate-50 rounded-xl font-bold text-sm">{p.name} ({p.type})</button>
-                  ))}
-                </div>
-              )}
+              <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Selecione o Cliente/Fornecedor..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+               {customerSearch && !selectedPartner && (
+                 <div className="absolute bg-white shadow-xl rounded-2xl z-50 w-full p-2 border border-slate-100 mt-1">
+                   {allPartners.slice(0, 5).map(p => (
+                     <button key={p.id} onClick={() => { setSelectedPartner(p); setCustomerSearch(p.name); }} className="w-full text-left p-3 hover:bg-slate-50 rounded-xl font-bold text-sm">{p.name} ({p.type})</button>
+                   ))}
+                 </div>
+               )}
           </div>
         </div>
 
@@ -335,7 +317,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
               className="w-full pl-4 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none" 
             />
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
             {filteredProducts.length > 0 ? filteredProducts.map(p => (
               <div key={p.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center group">
@@ -352,7 +333,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         </div>
       </div>
 
-      {/* Bloco Direito (Checkout) */}
       <div className="lg:col-span-4">
         <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl sticky top-8">
           <div className="space-y-4 mb-6 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
@@ -384,13 +364,11 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         </div>
       </div>
 
-      {/* SEÇÃO INFERIOR: SEGUNDA VIA */}
       <div className="lg:col-span-12 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-50 pb-4">
           <h4 className="font-black text-lg uppercase tracking-tight">Segunda Via de Tickets</h4>
           <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent text-xs font-black text-slate-700 border p-2 rounded-xl uppercase" />
         </div>
-
         <div className="overflow-x-auto max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -398,7 +376,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                 <th className="py-4">Movimentação</th>
                 <th className="py-4">Descrição / Parceiro</th>
                 <th className="py-4">Operador</th>
-                <th className="py-4">Data / Hora</th> {/* Nome atualizado na tabela */}
+                <th className="py-4">Data / Hora</th>
                 <th className="py-4">Valor Total</th>
                 <th className="py-4 text-right">Ação</th>
               </tr>
@@ -411,7 +389,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                   <td className="py-4 font-black text-indigo-600 uppercase">{(record as any).operator || 'SISTEMA'}</td>
                   <td className="py-4 text-slate-400">
                     {record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
-                    {/* Exibe o horário ao lado da data no painel da tabela se houver */}
                     {(record as any).time ? ` às ${(record as any).time}` : ''}
                   </td>
                   <td className="py-4 font-black text-slate-800">{formatCurrency(record.value)}</td>
