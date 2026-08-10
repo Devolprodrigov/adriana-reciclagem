@@ -133,6 +133,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
+  // FUNÇÃO DE IMPRESSÃO AJUSTADA PARA PUXAR O PIX NA HORA E NA SEGUNDA VIA
   const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string, operator?: string, customTime?: string, partnerId?: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -142,7 +143,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const dateDisplay = customDate ? `${customDate}, ${timeDisplay}` : `${now.toLocaleDateString('pt-BR')}, ${timeDisplay}`;
     const displayMethod = methodUsed === 'dinheiro' ? 'DINHEIRO VIVO (CAIXA)' : 'PIX / BANCO';
     
-    // BUSCA A CHAVE PIX DO CADASTRO DO CLIENTE (PF ou PJ)
+    // Tenta localizar a chave Pix do cliente cadastrado (PF ou PJ)
     let clientPix = '';
     if (partnerId) {
       const foundPF = customersPF.find(c => c.id === partnerId);
@@ -153,6 +154,18 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         clientPix = (foundPJ as any).pixKey || (foundPJ as any).chavePix || '';
       }
     }
+
+    // Se não encontrou pelo ID direto, tenta buscar pelo nome do parceiro nas listas cadastradas
+    if (!clientPix && partnerName) {
+      const foundPFByName = customersPF.find(c => c.name.toUpperCase() === partnerName.toUpperCase());
+      const foundPJByName = customersPJ.find(c => c.companyName.toUpperCase() === partnerName.toUpperCase());
+      if (foundPFByName) {
+        clientPix = (foundPFByName as any).pixKey || (foundPFByName as any).chavePix || '';
+      } else if (foundPJByName) {
+        clientPix = (foundPJByName as any).pixKey || (foundPJByName as any).chavePix || '';
+      }
+    }
+
     const chavePixSistema = clientPix || 'Não cadastrada';
 
     const itemsHtml = items.map(i => {
@@ -264,7 +277,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         status: 'pago',
         paymentMethod: currentMethod,
         operator: currentOperator,
-        partnerId: currentPartner.id, // Salva o ID do parceiro para recuperar na segunda via
+        partnerId: currentPartner.id, // Salva o ID do parceiro para garantir a leitura na segunda via
         productsNameCleaned: productsListText,
         totalQtySaved: totalQtyCalculated,
         category: currentCart[0]?.product.name || (currentOrderType === 'venda' ? 'Vendas' : 'COMPRA DE MATERIAIS RECO'),
