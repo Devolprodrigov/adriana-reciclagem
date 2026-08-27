@@ -27,7 +27,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   const [paymentMethod, setPaymentMethod] = useState<string>('banco');
   const [searchTerm, setSearchTerm] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string, type?: string} | null>(null);
+  const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string, type?: string, pixKey?: string} | null>(null);
 
   const currentYearMonth = useMemo(() => {
     const d = new Date();
@@ -111,8 +111,8 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   );
   
   const allPartners = useMemo(() => {
-    const pf = customersPF.map(c => ({ id: c.id, name: c.name, type: 'PF', pixKey: (c as any).pixKey || (c as any).chavePix }));
-    const pj = customersPJ.map(c => ({ id: c.id, name: c.companyName, type: 'PJ', pixKey: (c as any).pixKey || (c as any).chavePix }));
+    const pf = customersPF.map(c => ({ id: c.id, name: c.name, type: 'PF', pixKey: (c as any).pixKey || (c as any).chavePix || '' }));
+    const pj = customersPJ.map(c => ({ id: c.id, name: c.companyName, type: 'PJ', pixKey: (c as any).pixKey || (c as any).chavePix || '' }));
     return [...pf, ...pj].filter(p => p.name.toLowerCase().includes(customerSearch.toLowerCase()));
   }, [customersPF, customersPJ, customerSearch]);
 
@@ -133,8 +133,19 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
-  // FUNÇÃO DE IMPRESSÃO AJUSTADA PARA PUXAR O PIX NA HORA E NA SEGUNDA VIA
-  const printTicket = (items: any[], partnerName: string, totalVal: number, type: 'compra' | 'venda', customDate?: string, methodUsed?: string, operator?: string, customTime?: string, partnerId?: string) => {
+  // FUNÇÃO DE IMPRESSÃO UNIVERSAL (USADA NA VENDA E NA REIMPRESSÃO BASEADA EM SNAPSHOT)
+  const printTicket = (
+    items: any[], 
+    partnerName: string, 
+    totalVal: number, 
+    type: 'compra' | 'venda', 
+    customDate?: string, 
+    methodUsed?: string, 
+    operator?: string, 
+    customTime?: string, 
+    pixKeyToUse?: string,
+    isSecondCopy?: boolean
+  ) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     
@@ -142,31 +153,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const timeDisplay = customTime || now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const dateDisplay = customDate ? `${customDate}, ${timeDisplay}` : `${now.toLocaleDateString('pt-BR')}, ${timeDisplay}`;
     const displayMethod = methodUsed === 'dinheiro' ? 'DINHEIRO VIVO (CAIXA)' : 'PIX / BANCO';
-    
-    // Tenta localizar a chave Pix do cliente cadastrado (PF ou PJ)
-    let clientPix = '';
-    if (partnerId) {
-      const foundPF = customersPF.find(c => c.id === partnerId);
-      const foundPJ = customersPJ.find(c => c.id === partnerId);
-      if (foundPF) {
-        clientPix = (foundPF as any).pixKey || (foundPF as any).chavePix || '';
-      } else if (foundPJ) {
-        clientPix = (foundPJ as any).pixKey || (foundPJ as any).chavePix || '';
-      }
-    }
-
-    // Se não encontrou pelo ID direto, tenta buscar pelo nome do parceiro nas listas cadastradas
-    if (!clientPix && partnerName) {
-      const foundPFByName = customersPF.find(c => c.name.toUpperCase() === partnerName.toUpperCase());
-      const foundPJByName = customersPJ.find(c => c.companyName.toUpperCase() === partnerName.toUpperCase());
-      if (foundPFByName) {
-        clientPix = (foundPFByName as any).pixKey || (foundPFByName as any).chavePix || '';
-      } else if (foundPJByName) {
-        clientPix = (foundPJByName as any).pixKey || (foundPJByName as any).chavePix || '';
-      }
-    }
-
-    const chavePixSistema = clientPix || 'Não cadastrada';
+    const chavePixSistema = pixKeyToUse || 'Não cadastrada';
 
     const itemsHtml = items.map(i => {
       const name = i.productName || i.product?.name || i.name || 'Material';
@@ -177,7 +164,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       return `
         <div style="margin-bottom: 5px; border-bottom: 1px dotted #000; padding-bottom: 3px;">
           <strong>${name}</strong><br>
-          ${quantity.toFixed(2)}kg x ${formatCurrency(price)} = ${formatCurrency(subTotal)}
+          ${quantity.toFixed(3)}kg x ${formatCurrency(price)} = ${formatCurrency(subTotal)}
         </div>
       `;
     }).join('');
@@ -206,7 +193,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           <center>
             <strong style="font-size: 12px;">ADRIANA RECICLAGEM</strong><br>
             ${type === 'compra' ? 'TICKET DE ENTRADA (COMPRA)' : 'TICKET DE SAÍDA (VENDA)'}
-            ${customDate ? '<br><small>* SEGUNDA VIA *</small>' : ''}
+            ${isSecondCopy ? '<br><small style="font-weight: bold;">*** 2ª VIA ***</small>' : ''}
           </center>
           DATA: ${dateDisplay}<br>
           PARCEIRO: ${partnerName}<br>
@@ -225,26 +212,35 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const handleReprintHistory = (record: FinancialRecord) => {
     const type: 'compra' | 'venda' = record.type === 'receita' ? 'venda' : 'compra';
-    const partnerName = record.description.split(' - ')[1] || 'Não Identificado';
-    let finalProductName = (record as any).productsNameCleaned;
+    const partnerName = (record as any).partnerNameSnapshot || record.description.split(' - ')[1] || 'Não Identificado';
+    
+    // Puxa estritamente os itens salvos no snapshot do registro
+    const savedItems = (record as any).itemsSnapshot || [];
+    let mockItems = [];
 
-    if (!finalProductName) {
-      if (record.category && record.category !== 'Vendas' && record.category !== 'COMPRA DE MATERIAIS RECO') {
-        finalProductName = record.category;
-      } else {
-        finalProductName = type === 'venda' ? 'Saída de Materiais Recicláveis' : 'Entrada de Materiais Consolidados';
+    if (savedItems.length > 0) {
+      mockItems = savedItems;
+    } else {
+      // Fallback para registros antigos que não possuem o snapshot completo
+      let finalProductName = (record as any).productsNameCleaned;
+      if (!finalProductName) {
+        if (record.category && record.category !== 'Vendas' && record.category !== 'COMPRA DE MATERIAIS RECO') {
+          finalProductName = record.category;
+        } else {
+          finalProductName = type === 'venda' ? 'Saída de Materiais Recicláveis' : 'Entrada de Materiais Consolidados';
+        }
       }
+      const savedQty = (record as any).totalQtySaved || 1;
+      const computedPrice = (record as any).totalQtySaved ? (record.value / savedQty) : record.value;
+      mockItems = [{ productName: finalProductName.toUpperCase(), quantity: savedQty, price: computedPrice }];
     }
 
-    const savedQty = (record as any).totalQtySaved || 1;
-    const computedPrice = (record as any).totalQtySaved ? (record.value / savedQty) : record.value;
-    const mockItems = [{ productName: finalProductName.toUpperCase(), quantity: savedQty, price: computedPrice }];
     const customDate = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : undefined;
     const savedOperator = (record as any).operator || 'SISTEMA';
     const savedTime = (record as any).time || undefined;
-    const savedPartnerId = (record as any).partnerId || undefined;
+    const savedPixKey = (record as any).pixKeySnapshot || '';
     
-    printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator, savedTime, savedPartnerId);
+    printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator, savedTime, savedPixKey, true);
   };
 
   const handleFinish = async () => {
@@ -255,9 +251,17 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const currentTotal = total;
     const currentMethod = paymentMethod;
     const currentOperator = operatorName;
+    const exactTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    // Cria o Snapshot detalhado dos itens e da chave Pix no momento exato da venda
+    const itemsSnapshot = currentCart.map(item => ({
+      productName: item.product.name.toUpperCase(),
+      quantity: item.quantity,
+      customPrice: item.customPrice
+    }));
     const productsListText = currentCart.map(i => i.product.name).join(', ');
     const totalQtyCalculated = currentCart.reduce((sum, i) => sum + i.quantity, 0);
-    const exactTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const pixKeySnapshot = currentPartner.pixKey || '';
 
     try {
       const batch = writeBatch(db);
@@ -277,7 +281,10 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         status: 'pago',
         paymentMethod: currentMethod,
         operator: currentOperator,
-        partnerId: currentPartner.id, // Salva o ID do parceiro para garantir a leitura na segunda via
+        partnerId: currentPartner.id,
+        partnerNameSnapshot: currentPartner.name,
+        pixKeySnapshot: pixKeySnapshot,
+        itemsSnapshot: itemsSnapshot,
         productsNameCleaned: productsListText,
         totalQtySaved: totalQtyCalculated,
         category: currentCart[0]?.product.name || (currentOrderType === 'venda' ? 'Vendas' : 'COMPRA DE MATERIAIS RECO'),
@@ -285,7 +292,9 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       });
 
       await batch.commit();
-      printTicket(currentCart, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator, exactTime, currentPartner.id);
+      
+      // Imprime a 1ª via normalmente
+      printTicket(itemsSnapshot, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator, exactTime, pixKeySnapshot, false);
 
       setCart([]);
       setSelectedPartner(null);
