@@ -133,7 +133,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
-  // FUNÇÃO DE IMPRESSÃO UNIVERSAL (USADA NA VENDA E NA REIMPRESSÃO BASEADA EM SNAPSHOT)
+  // FUNÇÃO DE IMPRESSÃO UNIVERSAL (1ª E 2ª VIA COM SNAPSHOT)
   const printTicket = (
     items: any[], 
     partnerName: string, 
@@ -214,25 +214,23 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const type: 'compra' | 'venda' = record.type === 'receita' ? 'venda' : 'compra';
     const partnerName = (record as any).partnerNameSnapshot || record.description.split(' - ')[1] || 'Não Identificado';
     
-    // Puxa estritamente os itens salvos no snapshot do registro
-    const savedItems = (record as any).itemsSnapshot || [];
+    const savedItems = (record as any).itemsSnapshot;
     let mockItems = [];
 
-    if (savedItems.length > 0) {
+    if (Array.isArray(savedItems) && savedItems.length > 0) {
       mockItems = savedItems;
     } else {
-      // Fallback para registros antigos que não possuem o snapshot completo
-      let finalProductName = (record as any).productsNameCleaned;
-      if (!finalProductName) {
-        if (record.category && record.category !== 'Vendas' && record.category !== 'COMPRA DE MATERIAIS RECO') {
-          finalProductName = record.category;
-        } else {
-          finalProductName = type === 'venda' ? 'Saída de Materiais Recicláveis' : 'Entrada de Materiais Consolidados';
-        }
-      }
-      const savedQty = (record as any).totalQtySaved || 1;
-      const computedPrice = (record as any).totalQtySaved ? (record.value / savedQty) : record.value;
-      mockItems = [{ productName: finalProductName.toUpperCase(), quantity: savedQty, price: computedPrice }];
+      const rawNames = (record as any).productsNameCleaned || record.category || 'MATERIAL';
+      const namesArray = rawNames.split(', ');
+      const totalQ = (record as any).totalQtySaved || 1;
+      const splitQty = totalQ / namesArray.length;
+      const splitPrice = record.value / totalQ;
+
+      mockItems = namesArray.map((n: string) => ({
+        productName: n.toUpperCase(),
+        quantity: splitQty,
+        customPrice: splitPrice
+      }));
     }
 
     const customDate = record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : undefined;
@@ -253,7 +251,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     const currentOperator = operatorName;
     const exactTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    // Cria o Snapshot detalhado dos itens e da chave Pix no momento exato da venda
     const itemsSnapshot = currentCart.map(item => ({
       productName: item.product.name.toUpperCase(),
       quantity: item.quantity,
@@ -293,7 +290,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
       await batch.commit();
       
-      // Imprime a 1ª via normalmente
       printTicket(itemsSnapshot, currentPartner.name, currentTotal, currentOrderType, undefined, currentMethod, currentOperator, exactTime, pixKeySnapshot, false);
 
       setCart([]);
