@@ -4,13 +4,11 @@ import {
   Scale, User, Briefcase, Sparkles, Truck, LogOut, KeyRound
 } from 'lucide-react';
 
-// Importações do seu arquivo de configuração local
 import { 
   auth, db, signInWithEmailAndPassword, signOut, onAuthStateChanged, FirebaseUser,
   collection, onSnapshot, query, orderBy
 } from './firebase';
 
-// Importações da biblioteca oficial do Firebase
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { updatePassword } from 'firebase/auth';
 
@@ -37,7 +35,6 @@ const App: React.FC = () => {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Estados para controle de troca de senha obrigatória
   const [isFirstLogin, setIsFirstLogin] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -48,9 +45,7 @@ const App: React.FC = () => {
   const [customersPJ, setCustomersPJ] = useState<CustomerPJ[]>([]);
   const [financials, setFinancials] = useState<FinancialRecord[]>([]);
 
-  // Função para inicializar preventivamente os perfis no Firestore
   const inicializarUsuariosSistema = async () => {
-    // 1. Cadastra automaticamente a Maria Eduarda como ADMIN via código caso não esteja no banco
     try {
       const mariaIdRef = doc(db, 'usuarios', 'iNZ5xsLgNzeQQU9XPUMo8amQNNf2');
       const mariaSnap = await getDoc(mariaIdRef);
@@ -64,7 +59,6 @@ const App: React.FC = () => {
       console.error("Erro ao registrar Maria Eduarda Admin:", e);
     }
 
-    // 2. Cadastra os operadores padrão
     const listaOperadores = ['RAFAEL', 'FÁBIO', 'ARBYS', 'JOHNNYS', 'KEVIN', 'ANDREA'];
     for (const nomeOp of listaOperadores) {
       try {
@@ -79,7 +73,6 @@ const App: React.FC = () => {
     }
   };
 
-  // 1. Monitorar Autenticação e Buscar Cargo/Nome
   useEffect(() => {
     inicializarUsuariosSistema();
 
@@ -109,7 +102,6 @@ const App: React.FC = () => {
             const nameIdentified = userData.nome || u.email?.split('@')[0] || 'Usuário';
             setUserName(nameIdentified);
           } else {
-            // Se for o UID da Maria Eduarda, força admin mesmo em caso de falha de leitura
             if (u.uid === 'iNZ5xsLgNzeQQU9XPUMo8amQNNf2') {
               setUserRole('admin');
               setUserName('MARIA EDUARDA');
@@ -143,7 +135,6 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [password]);
 
-  // 2. Carregar Dados em Tempo Real para Qualquer Nível de Usuário Autenticado
   useEffect(() => {
     if (!user) {
       setProducts([]);
@@ -177,7 +168,6 @@ const App: React.FC = () => {
     };
   }, [user, userRole]);
 
-  // 3. Lógica para trocar a senha padrão por uma nova
   const handleForceChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword.length < 6) {
@@ -225,7 +215,6 @@ const App: React.FC = () => {
     </div>
   );
 
-  // TELA 1: LOGIN COMUM
   if (!user) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-900 p-6">
@@ -242,7 +231,6 @@ const App: React.FC = () => {
     );
   }
 
-  // TELA 2: TRAVA DE PRIMEIRO ACESSO (Obriga a mudar se a senha for 123456)
   if (isFirstLogin) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-900 p-6">
@@ -274,7 +262,6 @@ const App: React.FC = () => {
     );
   }
 
-  // CONFIGURAÇÃO DOS MENUS
   const menuItems = userRole === 'admin' 
     ? [
         { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18}/> },
@@ -304,3 +291,67 @@ const App: React.FC = () => {
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
           {menuItems.map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id as any)}
+              className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
+              {item.icon} {item.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="px-8 py-4 bg-slate-50 border-t border-slate-100 flex items-center gap-2.5">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></div>
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block truncate">
+            Acesso: <span className="text-indigo-600 font-black">{userName}</span>
+          </span>
+        </div>
+
+        <button onClick={() => signOut(auth)} className="p-8 border-t border-slate-100 flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-widest hover:text-rose-600 transition-colors">
+          <LogOut size={18}/> Sair
+        </button>
+      </aside>
+
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {notification && (
+          <div className="fixed top-8 right-8 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl z-50 animate-in fade-in">
+            <span className="text-[10px] font-black uppercase tracking-widest">{notification}</span>
+          </div>
+        )}
+        <div className="flex-1 overflow-y-auto p-10">
+          <div className="max-w-7xl mx-auto">
+            {activeTab === 'dashboard' && userRole === 'admin' && <DashboardView financials={financials} products={products} />}
+            {activeTab === 'produtos' && userRole === 'admin' && <ProdutosView products={products} notify={notify} />}
+            {activeTab === 'estoque' && userRole === 'admin' && <EstoqueView products={products} notify={notify} />}
+            {activeTab === 'pf-clientes' && <ClientesPFView customers={customersPF} notify={notify} />}
+            {activeTab === 'pj-clientes' && <ClientesPJView customers={customersPJ} notify={notify} />}
+            
+            {activeTab === 'pedidos' && (
+              <OrdersView 
+                products={products} 
+                financials={financials} 
+                customersPF={customersPF} 
+                customersPJ={customersPJ} 
+                notify={notify} 
+                operatorName={userName}
+                isAdmin={userRole === 'admin'}
+              />
+            )}
+            
+            {activeTab === 'financeiro' && userRole === 'admin' && <FinanceiroView financials={financials} notify={notify} />}
+            {activeTab === 'ai-insights' && userRole === 'admin' && <AIInsightsView financials={financials} products={products} />}
+            
+            {activeTab === 'notas-fiscais' && userRole === 'admin' && (
+              <NFView 
+                customersPF={customersPF} 
+                customersPJ={customersPJ} 
+                financials={financials} 
+                notify={notify} 
+              />
+            )}
+            {activeTab === 'mtr' && userRole === 'admin' && <MTRView notify={notify} />}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default App;
