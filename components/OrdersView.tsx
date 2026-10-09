@@ -11,7 +11,7 @@ interface Props {
   customersPJ: CustomerPJ[];
   notify: (m: string) => void;
   operatorName: string;
-  isAdmin: boolean; // <-- Adicionado aqui
+  isAdmin: boolean;
 }
 
 interface CartItem {
@@ -315,86 +315,4 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       <div className="lg:col-span-8 space-y-6">
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
           <div className="flex justify-between items-center border-b border-slate-50 pb-6">
-             <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1">
-               <button onClick={() => { setOrderType('compra'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'compra' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-400'}`}>Compra</button>
-               <button onClick={() => { setOrderType('venda'); setCart([]); }} className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase ${orderType === 'venda' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-400'}`}>Venda</button>
-             </div>
-             <div className={`flex items-center gap-3 px-6 py-3 rounded-2xl border ${isScaleConnected ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'}`}>
-                <span className="text-lg font-black">{scaleWeight.toFixed(3)} KG</span>
-                <button onClick={isScaleConnected ? disconnectScale : connectScale} className="text-indigo-600 ml-2">
-                    {isScaleConnected ? <WifiOff size={18}/> : <Wifi size={18}/>}
-                </button>
-             </div>
-          </div>
-          <div className="relative">
-              <input value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} placeholder="Selecione o Cliente/Fornecedor..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-               {customerSearch && !selectedPartner && (
-                 <div className="absolute bg-white shadow-xl rounded-2xl z-50 w-full p-2 border border-slate-100 mt-1">
-                   {allPartners.slice(0, 5).map(p => (
-                     <button key={p.id} onClick={() => { setSelectedPartner(p); setCustomerSearch(p.name); }} className="w-full text-left p-3 hover:bg-slate-50 rounded-xl font-bold text-sm">{p.name} ({p.type})</button>
-                   ))}
-                 </div>
-               )}
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="relative">
-            <input 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value)} 
-              placeholder="Pesquisar material catálogo..." 
-              className="w-full pl-4 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none" 
-            />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
-            {filteredProducts.length > 0 ? filteredProducts.map(p => (
-              <div key={p.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center group">
-                <div>
-                  <p className="font-black text-slate-800 uppercase text-sm">{p.name}</p>
-                  <p className="text-[10px] font-bold text-slate-400">SALDO: {p.stock}kg</p>
-                </div>
-                <button onClick={() => addToCart(p)} className="w-10 h-10 bg-slate-900 text-white rounded-xl hover:bg-indigo-600 transition-all flex items-center justify-center"><Plus size={20}/></button>
-              </div>
-            )) : (
-              <p className="col-span-2 text-center py-10 text-xs font-bold text-slate-300 uppercase">Nenhum material localizado</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="lg:col-span-4">
-        <div className="bg-white rounded-[2.5rem] p-6 border border-slate-100 shadow-xl sticky top-8">
-          <div className="space-y-4 mb-6 max-h-[280px] overflow-y-auto pr-2 custom-scrollbar">
-            {cart.map(item => (
-              <div key={item.product.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100/50 space-y-3 relative group">
-                <div className="flex justify-between items-start">
-                  <p className="font-black text-[11px] uppercase text-slate-800 pr-6 leading-tight">{item.product.name}</p>
-                  <button onClick={() => removeFromCart(item.product.id)} className="text-rose-400 absolute right-3 top-3"><Trash2 size={16}/></button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input type="number" step="0.001" value={item.quantity} onChange={e => updateCartQuantity(item.product.id, Number(e.target.value))} className="w-full p-2 border rounded-xl text-xs font-black" />
-                  <input type="number" step="0.01" value={item.customPrice} onChange={e => updateCartPrice(item.product.id, Number(e.target.value))} className="w-full p-2 border rounded-xl text-xs font-black" />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t pt-4 mb-4">
-            <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl">
-              <button type="button" onClick={() => setPaymentMethod('banco')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${paymentMethod === 'banco' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>PIX / BANCO</button>
-              <button type="button" onClick={() => setPaymentMethod('dinheiro')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${paymentMethod === 'dinheiro' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-400'}`}>CAIXA FISICO</button>
-            </div>
-          </div>
-
-          <div className="border-t pt-4">
-            <p className="text-3xl font-black mb-4">{formatCurrency(total)}</p>
-            <button onClick={handleFinish} disabled={cart.length === 0 || !selectedPartner} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase text-xs disabled:opacity-20 transition-all shadow-xl shadow-indigo-100 hover:bg-indigo-700">Finalizar Pedido</button>
-          </div>
-        </div>
-      </div>
-
-      {/* BLOCO DE SEGUNDA VIA: EXIBIDO APENAS PARA ADMINS */}
-      {isAdmin && (
-        <div className="lg:col-span-12 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-5
+             <div className="flex bg-
