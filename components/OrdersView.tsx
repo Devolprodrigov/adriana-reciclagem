@@ -11,6 +11,7 @@ interface Props {
   customersPJ: CustomerPJ[];
   notify: (m: string) => void;
   operatorName: string;
+  isAdmin: boolean; // <-- Adicionado aqui
 }
 
 interface CartItem {
@@ -21,7 +22,7 @@ interface CartItem {
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
-const OrdersView: React.FC<Props> = ({ products, financials, customersPF, customersPJ, notify, operatorName }) => {
+const OrdersView: React.FC<Props> = ({ products, financials, customersPF, customersPJ, notify, operatorName, isAdmin }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<'compra' | 'venda'>('compra');
   const [paymentMethod, setPaymentMethod] = useState<string>('banco');
@@ -133,7 +134,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
-  // FUNÇÃO DE IMPRESSÃO UNIVERSAL (1ª E 2ª VIA COM SNAPSHOT)
   const printTicket = (
     items: any[], 
     partnerName: string, 
@@ -394,47 +394,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
         </div>
       </div>
 
-      <div className="lg:col-span-12 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-50 pb-4">
-          <h4 className="font-black text-lg uppercase tracking-tight">Segunda Via de Tickets</h4>
-          <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent text-xs font-black text-slate-700 border p-2 rounded-xl uppercase" />
-        </div>
-        <div className="overflow-x-auto max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase">
-                <th className="py-4">Movimentação</th>
-                <th className="py-4">Descrição / Parceiro</th>
-                <th className="py-4">Operador</th>
-                <th className="py-4">Data / Hora</th>
-                <th className="py-4">Valor Total</th>
-                <th className="py-4 text-right">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredOrders.length > 0 ? filteredOrders.map(record => (
-                <tr key={record.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors text-xs font-bold text-slate-700">
-                  <td className="py-4 uppercase">{record.paymentMethod === 'dinheiro' ? 'CAIXA FISICO' : 'PIX / BANCO'}</td>
-                  <td className="py-4 font-black">{record.description}</td>
-                  <td className="py-4 font-black text-indigo-600 uppercase">{(record as any).operator || 'SISTEMA'}</td>
-                  <td className="py-4 text-slate-400">
-                    {record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}
-                    {(record as any).time ? ` às ${(record as any).time}` : ''}
-                  </td>
-                  <td className="py-4 font-black text-slate-800">{formatCurrency(record.value)}</td>
-                  <td className="py-4 text-right">
-                    <button onClick={() => handleReprintHistory(record)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors">Reimprimir</button>
-                  </td>
-                </tr>
-              )) : (
-                <tr><td colSpan={6} className="text-center py-12 text-xs font-bold text-slate-300 uppercase italic">Nenhuma movimentação localizada</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default OrdersView;
+      {/* BLOCO DE SEGUNDA VIA: EXIBIDO APENAS PARA ADMINS */}
+      {isAdmin && (
+        <div className="lg:col-span-12 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-5
