@@ -658,9 +658,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-Para os usuarios que nao sao ADMIN que tirar a parte onde mostra a questao de Segunda Via de Tickets pois mostra valores da empresda e quero que somente quem tem acesso ADMIN possa ver 
-
-Para ocultar a seção de **Segunda Via de Tickets** dos operadores comuns e exibi-la **apenas para usuários administradores**, precisamos passar o nível de acesso (`isAdmin` ou `userRole`) como propriedade para o componente `OrdersView`, e então condicionar a renderização daquela tabela e cabeçalho.
-
-Aqui está o código atualizado dos dois arquivos (`OrdersView.tsx` e `App.tsx`):
