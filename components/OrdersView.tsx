@@ -30,12 +30,12 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string, type?: string, pixKey?: string} | null>(null);
 
-  // Estados da Calculadora de Simulação de Lucro Real / Líquido
+  // Simulador Rápido Simplificado (Custo, Venda e Quantidade)
   const [simCost, setSimCost] = useState<number>(0);
   const [simSell, setSimSell] = useState<number>(0);
-  const [simQty, setSimQty] = useState<number>(1);
-  const [simFreight, setSimFreight] = useState<number>(0); // Transporte / Frete por kg
-  const [simOpsCost, setSimOpsCost] = useState<number>(0); // Funcionário, Água, Luz por kg
+  const [simQty, simSetQty] = useState<number>(1);
+  // Taxa operacional unificada padrão (ex: 10% para cobrir frete, luz, água e funcionários por venda)
+  const [simOpExpenseRate, setSimOpExpenseRate] = useState<number>(10); 
 
   const currentYearMonth = useMemo(() => {
     const d = new Date();
@@ -137,19 +137,19 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
-  // Cálculos do Carrinho Geral com Lucro Líquido
+  // Cálculo do Lucro Líquido do Carrinho considerando despesa operacional estimada (ex: 10%)
   const estimatedNetProfit = cart.reduce((acc, item) => {
     const cost = item.product.costPrice || 0;
     const sell = item.product.sellPrice || item.customPrice;
-    // Padrão de despesa estimada genérica de 0.15 por kg se não especificado
-    const unitExpense = 0.15; 
-    const unitNetProfit = sell - cost - unitExpense;
+    const opExpense = sell * (simOpExpenseRate / 100);
+    const unitNetProfit = sell - cost - opExpense;
     return acc + (unitNetProfit * item.quantity);
   }, 0);
 
-  // Cálculos da Calculadora de Simulação de Lucro Líquido
-  const simUnitNetProfit = simSell - simCost - simFreight - simOpsCost;
-  const simTotalNetProfit = simUnitNetProfit * simQty;
+  // Cálculos do Simulador Rápido Prático
+  const simOpExpenseValue = simSell * (simOpExpenseRate / 100);
+  const simUnitNetProfit = simSell - simCost - simOpExpenseValue;
+  const simTotalNetProfit = simUnitNetProfit * (simQty || 1);
   const simNetMargin = simSell > 0 ? ((simUnitNetProfit / simSell) * 100) : 0;
 
   const printTicket = (
@@ -347,13 +347,29 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           </div>
         </div>
 
-        {/* CALCULADORA DE LUCRO REAL / LÍQUIDO (DESCONTANDO FUNCIONÁRIO, ÁGUA, LUZ, TRANSPORTE) */}
+        {/* SIMULADOR RÁPIDO PRÁTICO (LIMPO E OBJETIVO) */}
         <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-lg space-y-4">
-          <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-            <Calculator size={20} className="text-indigo-400" />
-            <h4 className="font-black text-xs uppercase tracking-widest text-slate-200">Simulador de Lucro Real (Líquido por KG)</h4>
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <Calculator size={20} className="text-indigo-400" />
+              <h4 className="font-black text-xs uppercase tracking-widest text-slate-200">Simulador Rápido de Lucro Líquido</h4>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 font-bold uppercase">Despesa Op. / Frete:</span>
+              <select 
+                value={simOpExpenseRate} 
+                onChange={e => setSimOpExpenseRate(Number(e.target.value))}
+                className="bg-slate-800 text-indigo-300 text-xs font-black p-1.5 rounded-xl border-none outline-none cursor-pointer"
+              >
+                <option value={5}>5%</option>
+                <option value={10}>10% (Padrão)</option>
+                <option value={15}>15%</option>
+                <option value={20}>20%</option>
+              </select>
+            </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Custo Mat. (R$)</label>
               <input 
@@ -377,44 +393,23 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
               />
             </div>
             <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Frete / kg (R$)</label>
-              <input 
-                type="number" 
-                step="0.01" 
-                value={simFreight || ''} 
-                onChange={e => setSimFreight(Number(e.target.value))} 
-                placeholder="0.00" 
-                className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
-              />
-            </div>
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Func./Água/Luz/kg</label>
-              <input 
-                type="number" 
-                step="0.01" 
-                value={simOpsCost || ''} 
-                onChange={e => setSimOpsCost(Number(e.target.value))} 
-                placeholder="0.00" 
-                className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
-              />
-            </div>
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Qtd / KG</label>
+              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Quantidade (KG)</label>
               <input 
                 type="number" 
                 step="0.001" 
                 value={simQty || ''} 
-                onChange={e => setSimQty(Number(e.target.value))} 
+                onChange={e => simSetQty(Number(e.target.value))} 
                 placeholder="1" 
                 className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
               />
             </div>
           </div>
+
           <div className="bg-slate-800/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Líquido Unitário</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Líquido / kg</span>
               <span className={`text-sm font-black ${simUnitNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {formatCurrency(simUnitNetProfit)} / kg
+                {formatCurrency(simUnitNetProfit)}
               </span>
             </div>
             <div>
@@ -422,7 +417,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
               <span className="text-sm font-black text-indigo-300">{simNetMargin.toFixed(1)}%</span>
             </div>
             <div className="text-right">
-              <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Líquido Total</span>
+              <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Total da Carga</span>
               <span className={`text-base font-black ${simTotalNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {formatCurrency(simTotalNetProfit)}
               </span>
@@ -487,7 +482,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             </div>
             <div className="text-right">
               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 px-2.5 py-1 rounded-full uppercase">
-                {total > 0 ? ((estimatedNetProfit / total) * 100).toFixed(1) : '0.0'}% Líquida
+                {simOpExpenseRate}% Desp. Op.
               </span>
             </div>
           </div>
