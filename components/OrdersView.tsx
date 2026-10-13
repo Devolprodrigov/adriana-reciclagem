@@ -21,6 +21,7 @@ interface CartItem {
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+const formatStock = (val: number | undefined) => (val === undefined || isNaN(val) ? '0.00' : Number(val).toFixed(2));
 
 const OrdersView: React.FC<Props> = ({ products, financials, customersPF, customersPJ, notify, operatorName, userRole }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -30,11 +31,10 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string, type?: string, pixKey?: string} | null>(null);
 
-  // Simulador Rápido Simplificado (Custo, Venda e Quantidade)
+  // Simulador Rápido Simplificado
   const [simCost, setSimCost] = useState<number>(0);
   const [simSell, setSimSell] = useState<number>(0);
   const [simQty, simSetQty] = useState<number>(1);
-  // Taxa operacional unificada padrão (ex: 10% para cobrir frete, luz, água e funcionários por venda)
   const [simOpExpenseRate, setSimOpExpenseRate] = useState<number>(10); 
 
   const currentYearMonth = useMemo(() => {
@@ -137,7 +137,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
-  // Cálculo do Lucro Líquido do Carrinho considerando despesa operacional estimada (ex: 10%)
   const estimatedNetProfit = cart.reduce((acc, item) => {
     const cost = item.product.costPrice || 0;
     const sell = item.product.sellPrice || item.customPrice;
@@ -146,7 +145,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     return acc + (unitNetProfit * item.quantity);
   }, 0);
 
-  // Cálculos do Simulador Rápido Prático
   const simOpExpenseValue = simSell * (simOpExpenseRate / 100);
   const simUnitNetProfit = simSell - simCost - simOpExpenseValue;
   const simTotalNetProfit = simUnitNetProfit * (simQty || 1);
@@ -347,83 +345,85 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           </div>
         </div>
 
-        {/* SIMULADOR RÁPIDO PRÁTICO (LIMPO E OBJETIVO) */}
-        <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-lg space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-2">
-              <Calculator size={20} className="text-indigo-400" />
-              <h4 className="font-black text-xs uppercase tracking-widest text-slate-200">Simulador Rápido de Lucro Líquido</h4>
+        {/* SIMULADOR RÁPIDO - EXIBIDO APENAS PARA ADMINISTRADORES */}
+        {userRole === 'admin' && (
+          <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-lg space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Calculator size={20} className="text-indigo-400" />
+                <h4 className="font-black text-xs uppercase tracking-widest text-slate-200">Simulador Rápido de Lucro Líquido</h4>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Despesa Op. / Frete:</span>
+                <select 
+                  value={simOpExpenseRate} 
+                  onChange={e => setSimOpExpenseRate(Number(e.target.value))}
+                  className="bg-slate-800 text-indigo-300 text-xs font-black p-1.5 rounded-xl border-none outline-none cursor-pointer"
+                >
+                  <option value={5}>5%</option>
+                  <option value={10}>10% (Padrão)</option>
+                  <option value={15}>15%</option>
+                  <option value={20}>20%</option>
+                </select>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-slate-400 font-bold uppercase">Despesa Op. / Frete:</span>
-              <select 
-                value={simOpExpenseRate} 
-                onChange={e => setSimOpExpenseRate(Number(e.target.value))}
-                className="bg-slate-800 text-indigo-300 text-xs font-black p-1.5 rounded-xl border-none outline-none cursor-pointer"
-              >
-                <option value={5}>5%</option>
-                <option value={10}>10% (Padrão)</option>
-                <option value={15}>15%</option>
-                <option value={20}>20%</option>
-              </select>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Custo Mat. (R$)</label>
-              <input 
-                type="number" 
-                step="0.01" 
-                value={simCost || ''} 
-                onChange={e => setSimCost(Number(e.target.value))} 
-                placeholder="0.00" 
-                className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Custo Mat. (R$)</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  value={simCost || ''} 
+                  onChange={e => setSimCost(Number(e.target.value))} 
+                  placeholder="0.00" 
+                  className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Preço Venda (R$)</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  value={simSell || ''} 
+                  onChange={e => setSimSell(Number(e.target.value))} 
+                  placeholder="0.00" 
+                  className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Quantidade (KG)</label>
+                <input 
+                  type="number" 
+                  step="0.001" 
+                  value={simQty || ''} 
+                  onChange={e => simSetQty(Number(e.target.value))} 
+                  placeholder="1" 
+                  className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Preço Venda (R$)</label>
-              <input 
-                type="number" 
-                step="0.01" 
-                value={simSell || ''} 
-                onChange={e => setSimSell(Number(e.target.value))} 
-                placeholder="0.00" 
-                className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
-              />
-            </div>
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Quantidade (KG)</label>
-              <input 
-                type="number" 
-                step="0.001" 
-                value={simQty || ''} 
-                onChange={e => simSetQty(Number(e.target.value))} 
-                placeholder="1" 
-                className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
-              />
-            </div>
-          </div>
 
-          <div className="bg-slate-800/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Líquido / kg</span>
-              <span className={`text-sm font-black ${simUnitNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {formatCurrency(simUnitNetProfit)}
-              </span>
-            </div>
-            <div>
-              <span className="text-[9px] font-bold text-slate-400 uppercase block">Margem Líquida</span>
-              <span className="text-sm font-black text-indigo-300">{simNetMargin.toFixed(1)}%</span>
-            </div>
-            <div className="text-right">
-              <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Total da Carga</span>
-              <span className={`text-base font-black ${simTotalNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {formatCurrency(simTotalNetProfit)}
-              </span>
+            <div className="bg-slate-800/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Líquido / kg</span>
+                <span className={`text-sm font-black ${simUnitNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {formatCurrency(simUnitNetProfit)}
+                </span>
+              </div>
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 uppercase block">Margem Líquida</span>
+                <span className="text-sm font-black text-indigo-300">{simNetMargin.toFixed(1)}%</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Total da Carga</span>
+                <span className={`text-base font-black ${simTotalNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {formatCurrency(simTotalNetProfit)}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="space-y-4">
           <div className="relative">
@@ -439,7 +439,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
               <div key={p.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center group">
                 <div>
                   <p className="font-black text-slate-800 uppercase text-sm">{p.name}</p>
-                  <p className="text-[10px] font-bold text-slate-400">SALDO: {p.stock}kg | Custo: {formatCurrency(p.costPrice || 0)}</p>
+                  <p className="text-[10px] font-bold text-slate-400">SALDO: {formatStock(p.stock)}kg | Custo: {formatCurrency(p.costPrice || 0)}</p>
                 </div>
                 <button onClick={() => addToCart(p)} className="w-10 h-10 bg-slate-900 text-white rounded-xl hover:bg-indigo-600 transition-all flex items-center justify-center"><Plus size={20}/></button>
               </div>
