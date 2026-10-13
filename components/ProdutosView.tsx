@@ -21,6 +21,12 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
   const [formCost, setFormCost] = useState<number>(0);
   const [formSell, setFormSell] = useState<number>(0);
 
+  // Função para padronizar e arredondar o estoque exatamente com 2 casas decimais
+  const formatStock = (val: number | undefined) => {
+    if (val === undefined || isNaN(val)) return '0.00';
+    return Number(val).toFixed(2);
+  };
+
   const filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const openModalForNew = () => {
@@ -157,7 +163,7 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
                   </td>
                   <td className="px-6 py-5 text-center">
                     <span className={`font-black ${(p.stock || 0) <= (p.minStock || 0) ? 'text-rose-600' : 'text-slate-800'}`}>
-                      {p.stock || 0} {p.unit}
+                      {formatStock(p.stock)} {p.unit}
                     </span>
                   </td>
                   <td className="px-6 py-5 text-right space-x-1">
@@ -240,11 +246,11 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
 
               <div>
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Qtd Inicial</label>
-                 <input name="stock" type="number" defaultValue={editingProduct?.stock || 0} required className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
+                 <input name="stock" type="number" step="0.01" defaultValue={editingProduct?.stock || 0} required className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
               </div>
               <div>
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Qtd Mínima</label>
-                 <input name="minStock" type="number" defaultValue={editingProduct?.minStock || 10} required className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
+                 <input name="minStock" type="number" step="0.01" defaultValue={editingProduct?.minStock || 10} required className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
               </div>
               
               <div className="col-span-2 flex gap-3 mt-4">
