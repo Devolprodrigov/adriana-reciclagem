@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, Search, Edit3, Trash2, Box } from 'lucide-react';
+import { Plus, Search, Edit3, Trash2, Box, TrendingUp } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Product } from '../types';
-import { handleFirestoreError, OperationType } from '../firebase'; // Ajustado para o arquivo onde está o helper
 
 interface Props {
   products: Product[];
@@ -18,13 +17,30 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  // Estados locais para simulação no modal de cadastro/edição
+  const [formCost, setFormCost] = useState<number>(0);
+  const [formSell, setFormSell] = useState<number>(0);
+
   const filtered = products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  const openModalForNew = () => {
+    setEditingProduct(null);
+    setFormCost(0);
+    setFormSell(0);
+    setShowModal(true);
+  };
+
+  const openModalForEdit = (p: Product) => {
+    setEditingProduct(p);
+    setFormCost(p.costPrice || 0);
+    setFormSell(p.sellPrice || 0);
+    setShowModal(true);
+  };
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     
-    // Objeto formatado para o Firebase
     const data = {
       code: fd.get('code') as string,
       name: fd.get('name') as string,
@@ -34,7 +50,7 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
       stock: Number(fd.get('stock')),
       minStock: Number(fd.get('minStock')),
       unit: 'KG',
-      updatedAt: serverTimestamp() // Bom para auditoria
+      updatedAt: serverTimestamp()
     };
 
     try {
@@ -68,13 +84,17 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
     }
   };
 
+  // Cálculos auxiliares de lucro
+  const calcProfit = (cost: number, sell: number) => sell - cost;
+  const calcMargin = (cost: number, sell: number) => cost > 0 ? ((sell - cost) / cost) * 100 : 0;
+
   return (
     <div className="space-y-6">
       {/* Cabeçalho e Busca */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Catálogo de Materiais</h3>
-          <p className="text-xs font-bold text-slate-400">Gerencie seu portfólio de produtos e preços</p>
+          <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Catálogo de Materiais & Margens</h3>
+          <p className="text-xs font-bold text-slate-400">Mapeamento de preços de compra, venda e lucratividade</p>
         </div>
         <div className="flex gap-3 w-full md:w-auto">
           <div className="relative flex-1 md:w-64">
@@ -86,7 +106,7 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
             />
           </div>
           <button 
-            onClick={() => { setEditingProduct(null); setShowModal(true); }}
+            onClick={openModalForNew}
             className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-700 shadow-lg shadow-indigo-100 shrink-0"
           >
             <Plus size={18}/> Novo Item
@@ -96,42 +116,57 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
 
       {/* Tabela */}
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden overflow-x-auto">
-        <table className="w-full text-left min-w-[1000px]">
+        <table className="w-full text-left min-w-[1100px]">
           <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-100">
             <tr>
-              <th className="px-8 py-5">Material / Código</th>
-              <th className="px-8 py-5">Categoria</th>
-              <th className="px-8 py-5 text-right">Preço Custo</th>
-              <th className="px-8 py-5 text-right">Preço Venda</th>
-              <th className="px-8 py-5 text-center">Estoque Atual</th>
-              <th className="px-8 py-5 text-center">Est. Mínimo</th>
-              <th className="px-8 py-5 text-right">Ações</th>
+              <th className="px-6 py-5">Material / Código</th>
+              <th className="px-6 py-5">Categoria</th>
+              <th className="px-6 py-5 text-right">Custo (Compra)</th>
+              <th className="px-6 py-5 text-right">Venda (Mercado)</th>
+              <th className="px-6 py-5 text-right">Lucro (R$)</th>
+              <th className="px-6 py-5 text-center">Margem (%)</th>
+              <th className="px-6 py-5 text-center">Estoque</th>
+              <th className="px-6 py-5 text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {filtered.map(p => (
-              <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
-                <td className="px-8 py-5">
-                  <p className="font-black text-slate-800">{p.name}</p>
-                  <p className="text-[10px] font-mono font-bold text-slate-400 uppercase">{p.code}</p>
-                </td>
-                <td className="px-8 py-5">
-                  <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-[10px] font-black uppercase">{p.category}</span>
-                </td>
-                <td className="px-8 py-5 text-right font-bold text-slate-500">{formatCurrency(p.costPrice || 0)}</td>
-                <td className="px-8 py-5 text-right font-black text-emerald-600">{formatCurrency(p.sellPrice || 0)}</td>
-                <td className="px-8 py-5 text-center">
-                  <span className={`font-black ${(p.stock || 0) <= (p.minStock || 0) ? 'text-rose-600' : 'text-slate-800'}`}>
-                    {p.stock || 0} {p.unit}
-                  </span>
-                </td>
-                <td className="px-8 py-5 text-center font-bold text-slate-400">{p.minStock || 0} {p.unit}</td>
-                <td className="px-8 py-5 text-right space-x-1">
-                  <button onClick={() => { setEditingProduct(p); setShowModal(true); }} className="p-2.5 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"><Edit3 size={18}/></button>
-                  <button onClick={() => setDeleteConfirm(p.id)} className="p-2.5 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"><Trash2 size={18}/></button>
-                </td>
-              </tr>
-            ))}
+            {filtered.map(p => {
+              const cost = p.costPrice || 0;
+              const sell = p.sellPrice || 0;
+              const profit = calcProfit(cost, sell);
+              const margin = calcMargin(cost, sell);
+
+              return (
+                <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
+                  <td className="px-6 py-5">
+                    <p className="font-black text-slate-800">{p.name}</p>
+                    <p className="text-[10px] font-mono font-bold text-slate-400 uppercase">{p.code}</p>
+                  </td>
+                  <td className="px-6 py-5">
+                    <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-full text-[10px] font-black uppercase">{p.category}</span>
+                  </td>
+                  <td className="px-6 py-5 text-right font-bold text-slate-500">{formatCurrency(cost)}</td>
+                  <td className="px-6 py-5 text-right font-black text-slate-700">{formatCurrency(sell)}</td>
+                  <td className={`px-6 py-5 text-right font-black ${profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {formatCurrency(profit)}
+                  </td>
+                  <td className="px-6 py-5 text-center">
+                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-black ${margin >= 20 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                      <TrendingUp size={12}/> {margin.toFixed(1)}%
+                    </span>
+                  </td>
+                  <td className="px-6 py-5 text-center">
+                    <span className={`font-black ${(p.stock || 0) <= (p.minStock || 0) ? 'text-rose-600' : 'text-slate-800'}`}>
+                      {p.stock || 0} {p.unit}
+                    </span>
+                  </td>
+                  <td className="px-6 py-5 text-right space-x-1">
+                    <button onClick={() => openModalForEdit(p)} className="p-2.5 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors"><Edit3 size={18}/></button>
+                    <button onClick={() => setDeleteConfirm(p.id)} className="p-2.5 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"><Trash2 size={18}/></button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -140,10 +175,11 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-10 shadow-2xl animate-in zoom-in-95">
-            <h2 className="text-2xl font-black mb-8 flex items-center gap-3">
+            <h2 className="text-2xl font-black mb-6 flex items-center gap-3">
               {editingProduct ? <Edit3 className="text-indigo-600"/> : <Plus className="text-indigo-600"/>}
-              {editingProduct ? 'Editar Material' : 'Novo Material'}
+              {editingProduct ? 'Editar Material & Preços' : 'Novo Material & Preços'}
             </h2>
+
             <form onSubmit={handleSave} className="grid grid-cols-2 gap-5">
               <div className="col-span-2">
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Nome do Material</label>
@@ -166,13 +202,42 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
                  </select>
               </div>
               <div>
-                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Custo (R$)</label>
-                 <input name="costPrice" type="number" step="0.01" defaultValue={editingProduct?.costPrice} required className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
+                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Custo Compra (R$)</label>
+                 <input 
+                   name="costPrice" 
+                   type="number" 
+                   step="0.01" 
+                   value={formCost} 
+                   onChange={e => setFormCost(Number(e.target.value))}
+                   required 
+                   className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" 
+                 />
               </div>
               <div>
-                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Venda (R$)</label>
-                 <input name="sellPrice" type="number" step="0.01" defaultValue={editingProduct?.sellPrice} required className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
+                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Preço Venda (R$)</label>
+                 <input 
+                   name="sellPrice" 
+                   type="number" 
+                   step="0.01" 
+                   value={formSell} 
+                   onChange={e => setFormSell(Number(e.target.value))}
+                   required 
+                   className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" 
+                 />
               </div>
+
+              {/* Box de Indicadores de Lucro em Tempo Real no Modal */}
+              <div className="col-span-2 bg-indigo-50/60 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">Lucro Estimado / Un</p>
+                  <p className="text-lg font-black text-indigo-900">{formatCurrency(calcProfit(formCost, formSell))}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">Margem Percentual</p>
+                  <p className="text-lg font-black text-indigo-900">{calcMargin(formCost, formSell).toFixed(1)}%</p>
+                </div>
+              </div>
+
               <div>
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1.5 block">Qtd Inicial</label>
                  <input name="stock" type="number" defaultValue={editingProduct?.stock || 0} required className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
@@ -182,7 +247,7 @@ const ProdutosView: React.FC<Props> = ({ products, notify }) => {
                  <input name="minStock" type="number" defaultValue={editingProduct?.minStock || 10} required className="w-full px-4 py-4 bg-slate-50 border-none rounded-2xl font-bold focus:ring-2 focus:ring-indigo-500 outline-none" />
               </div>
               
-              <div className="col-span-2 flex gap-3 mt-6">
+              <div className="col-span-2 flex gap-3 mt-4">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black uppercase text-[10px] tracking-widest">Cancelar</button>
                 <button type="submit" className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-indigo-100 hover:bg-indigo-700">Salvar Material</button>
               </div>
