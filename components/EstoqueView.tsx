@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Scale, ArrowUp, Plus } from 'lucide-react';
 import { Product } from '../types';
-import { db } from '../firebase'; // GARANTA QUE ESSE CAMINHO ESTÁ CORRETO
+import { db } from '../firebase';
 import { collection, addDoc, doc, updateDoc, increment } from 'firebase/firestore';
 
 interface Props {
@@ -14,6 +14,12 @@ const EstoqueView: React.FC<Props> = ({ products, notify }) => {
   const [showModal, setShowModal] = useState(false);
   const [weights, setWeights] = useState<{ [key: string]: string }>({});
   const [isSaving, setIsSaving] = useState(false);
+
+  // Função para padronizar e arredondar o estoque exatamente com 2 casas decimais
+  const formatStock = (val: number | undefined) => {
+    if (val === undefined || isNaN(val)) return '0.00';
+    return Number(val).toFixed(2);
+  };
 
   // --- ATUALIZAR PESO RÁPIDO (CARD) ---
   const handleAddStock = async (productId: string) => {
@@ -59,17 +65,14 @@ const EstoqueView: React.FC<Props> = ({ products, notify }) => {
         createdAt: new Date().toISOString()
       };
 
-      // Tenta gravar na coleção 'products' do Firestore
       await addDoc(collection(db, 'products'), data);
       
       notify("Material adicionado com sucesso!");
       setShowModal(false); 
     } catch (error: any) {
       console.error("ERRO NO FIREBASE:", error);
-      // Se travar aqui, o alert vai te dizer exatamente o porquê
       alert("FALHA AO GRAVAR: " + (error.message || "Verifique as Rules do Firebase"));
     } finally {
-      // ISSO AQUI DESTRAVA O BOTÃO OBRIGATORIAMENTE
       setIsSaving(false);
     }
   };
@@ -109,14 +112,17 @@ const EstoqueView: React.FC<Props> = ({ products, notify }) => {
               </div>
               <h4 className="font-black text-slate-800 uppercase text-center text-sm line-clamp-1">{p.name}</h4>
               <p className="text-[10px] font-bold text-slate-400 mb-6">{p.code}</p>
-              <p className={`text-4xl font-black mb-6 ${p.stock <= p.minStock ? 'text-rose-600' : 'text-slate-800'}`}>
-                {p.stock}
+              
+              {/* PESO EXIBIDO COM 2 CASAS DECIMAIS FIXAS */}
+              <p className={`text-3xl font-black mb-6 ${p.stock <= p.minStock ? 'text-rose-600' : 'text-slate-800'}`}>
+                {formatStock(p.stock)}
                 <span className="text-xs ml-1 opacity-40 uppercase">{p.unit}</span>
               </p>
               
               <div className="w-full flex gap-2">
                 <input 
                   type="number" 
+                  step="0.01"
                   placeholder="KG" 
                   value={weights[p.id] || ''} 
                   onChange={(e) => setWeights({ ...weights, [p.id]: e.target.value })}
@@ -150,8 +156,8 @@ const EstoqueView: React.FC<Props> = ({ products, notify }) => {
               </select>
               <input name="costPrice" type="number" step="0.01" placeholder="CUSTO R$" required className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
               <input name="sellPrice" type="number" step="0.01" placeholder="VENDA R$" required className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-              <input name="stock" type="number" placeholder="ESTOQUE INICIAL" className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-              <input name="minStock" type="number" placeholder="ESTOQUE MÍNIMO" className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+              <input name="stock" type="number" step="0.01" placeholder="ESTOQUE INICIAL" className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+              <input name="minStock" type="number" step="0.01" placeholder="ESTOQUE MÍNIMO" className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" />
               
               <button 
                 type="submit" 
@@ -174,5 +180,7 @@ const EstoqueView: React.FC<Props> = ({ products, notify }) => {
     </div>
   );
 };
+
+EstoqueView.displayName = "EstoqueView";
 
 export default EstoqueView;
