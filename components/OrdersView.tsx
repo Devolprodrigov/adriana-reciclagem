@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff, Printer, ArrowUpRight, ArrowDownLeft, Calendar, TrendingUp } from 'lucide-react';
+import { ShoppingCart, Search, Scale, Plus, Trash2, Wifi, WifiOff, Printer, ArrowUpRight, ArrowDownLeft, Calendar, TrendingUp, Calculator } from 'lucide-react';
 import { Product, FinancialRecord, CustomerPF, CustomerPJ } from '../types';
 import { db } from '../firebase';
 import { collection, writeBatch, doc, serverTimestamp } from 'firebase/firestore';
@@ -29,6 +29,11 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
   const [searchTerm, setSearchTerm] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedPartner, setSelectedPartner] = useState<{id: string, name: string, type?: string, pixKey?: string} | null>(null);
+
+  // Estados da Calculadora de Simulação Rápida
+  const [simCost, setSimCost] = useState<number>(0);
+  const [simSell, setSimSell] = useState<number>(0);
+  const [simQty, setSimQty] = useState<number>(1);
 
   const currentYearMonth = useMemo(() => {
     const d = new Date();
@@ -116,7 +121,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const addToCart = (p: Product) => {
     const qtyToAdd = scaleWeight > 0 ? scaleWeight : 1;
-    // Se for venda, usa o preço de mercado (sellPrice). Se for compra, usa o custo (costPrice)
     const initialPrice = orderType === 'venda' ? (p.sellPrice || 0) : (p.costPrice || 0);
     const existing = cart.find(i => i.product.id === p.id);
     if (existing) {
@@ -131,15 +135,18 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const total = cart.reduce((acc, item) => acc + (item.customPrice * item.quantity), 0);
 
-  // Cálculo do Lucro Estimado do Carrinho (Baseado na diferença entre Preço de Venda do Cadastro e Custo)
   const estimatedProfit = cart.reduce((acc, item) => {
     const cost = item.product.costPrice || 0;
-    const sell = item.product.sellPrice || item.customPrice; // Usa o preço de venda de mercado ou o customizado
+    const sell = item.product.sellPrice || item.customPrice;
     const unitProfit = sell - cost;
     return acc + (unitProfit * item.quantity);
   }, 0);
 
-  // FUNÇÃO DE IMPRESSÃO UNIVERSAL (1ª E 2ª VIA COM SNAPSHOT)
+  // Cálculos da Calculadora de Simulação Rápida
+  const simUnitProfit = simSell - simCost;
+  const simTotalProfit = simUnitProfit * simQty;
+  const simMargin = simCost > 0 ? ((simUnitProfit / simCost) * 100) : 0;
+
   const printTicket = (
     items: any[], 
     partnerName: string, 
@@ -335,6 +342,67 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
           </div>
         </div>
 
+        {/* CALCULADORA / SIMULADOR RÁPIDO DE MARGEM E LUCRO */}
+        <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-lg space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+            <Calculator size={20} className="text-indigo-400" />
+            <h4 className="font-black text-xs uppercase tracking-widest text-slate-200">Simulador Rápido de Preço & Lucro</h4>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Custo / Compra (R$)</label>
+              <input 
+                type="number" 
+                step="0.01" 
+                value={simCost || ''} 
+                onChange={e => setSimCost(Number(e.target.value))} 
+                placeholder="0.00" 
+                className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
+              />
+            </div>
+            <div>
+              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Venda / Mercado (R$)</label>
+              <input 
+                type="number" 
+                step="0.01" 
+                value={simSell || ''} 
+                onChange={e => setSimSell(Number(e.target.value))} 
+                placeholder="0.00" 
+                className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
+              />
+            </div>
+            <div>
+              <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Qtd / KG</label>
+              <input 
+                type="number" 
+                step="0.001" 
+                value={simQty || ''} 
+                onChange={e => setSimQty(Number(e.target.value))} 
+                placeholder="1" 
+                className="w-full p-3 bg-slate-800 border-none rounded-xl text-xs font-black text-white outline-none focus:ring-2 focus:ring-indigo-500" 
+              />
+            </div>
+          </div>
+          <div className="bg-slate-800/80 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Unitário</span>
+              <span className={`text-sm font-black ${simUnitProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {formatCurrency(simUnitProfit)} / kg
+              </span>
+            </div>
+            <div>
+              <span className="text-[9px] font-bold text-slate-400 uppercase block">Margem de Lucro</span>
+              <span className="text-sm font-black text-indigo-300">{simMargin.toFixed(1)}%</span>
+            </div>
+            <div className="text-right">
+              <span className="text-[9px] font-bold text-slate-400 uppercase block">Lucro Total Estimado</span>
+              <span className={`text-base font-black ${simTotalProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {formatCurrency(simTotalProfit)}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <div className="space-y-4">
           <div className="relative">
             <input 
@@ -344,7 +412,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
               className="w-full pl-4 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none" 
             />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
             {filteredProducts.length > 0 ? filteredProducts.map(p => (
               <div key={p.id} className="bg-white p-5 rounded-[2rem] border border-slate-100 flex justify-between items-center group">
                 <div>
@@ -383,7 +451,6 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
             ))}
           </div>
 
-          {/* Painel de Lucratividade Estimada da Transação */}
           <div className="bg-emerald-50/70 border border-emerald-100 rounded-2xl p-4 mb-4 flex items-center justify-between">
             <div>
               <p className="text-[10px] font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1">
