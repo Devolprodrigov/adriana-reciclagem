@@ -18,16 +18,17 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   
-  // Filtro de frequência da tabela principal
   const [frequencyFilter, setFrequencyFilter] = useState<'todos' | 'frequente' | 'regular'>('todos');
 
-  // Estados de Filtro de Período para o Top 100
-  const currentYearStr = new Date().getFullYear().toString();
+  // Inicializa com o Ano e o Mês atual real do sistema (Ex: 2026 e 10 para Outubro)
+  const now = new Date();
+  const currentYearStr = now.getFullYear().toString();
+  const currentMonthStr = String(now.getMonth() + 1).padStart(2, '0');
+
   const [top100Year, setTop100Year] = useState<string>(currentYearStr);
-  const [top100Month, setTop100Month] = useState<string>('todos');
+  const [top100Month, setTop100Month] = useState<string>(currentMonthStr);
   const [top100Day, setTop100Day] = useState<string>('todos');
 
-  // Estados controlados para o formulário
   const [zipCode, setZipCode] = useState('');
   const [address, setAddress] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
@@ -117,7 +118,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     }
   };
 
-  // 1. Filtragem do Financeiro por Período (Ano, Mês, Dia)
+  // Filtragem do Financeiro por Período
   const filteredFinancialsForTop100 = useMemo(() => {
     return financials.filter(f => {
       if (!f.date) return false;
@@ -131,18 +132,16 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     });
   }, [financials, top100Year, top100Month, top100Day]);
 
-  // 2. Mapeamento robusto combinando partnerId e variação de nomes na descrição
+  // Mapeamento robusto combinando partnerId e variação de nomes na descrição
   const clientStatsMap = useMemo(() => {
     const map: { [key: string]: { visitCount: number; uniqueWeeks: Set<number>; totalSpentOrReceived: number } } = {};
 
     filteredFinancialsForTop100.forEach(f => {
       let identifier = '';
 
-      // Tenta usar o partnerId se estiver salvo no registro financeiro
       if ((f as any).partnerId) {
         identifier = (f as any).partnerId;
       } else if (f.description) {
-        // Fallback: extrai do texto da descrição (ex: "COMPRA - NOME DO CLIENTE")
         const parts = f.description.split(' - ');
         identifier = parts.length > 1 ? parts[1].trim().toUpperCase() : f.description.trim().toUpperCase();
       }
@@ -166,24 +165,45 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     return map;
   }, [filteredFinancialsForTop100]);
 
-  // 3. Cruzamento com a lista de clientes cadastrados (por ID ou por Nome)
+  // Cruzamento global com o financeiro total para a tabela principal (independente do filtro do modal)
+  const globalClientStatsMap = useMemo(() => {
+    const map: { [key: string]: { visitCount: number; uniqueWeeks: Set<number>; totalSpentOrReceived: number } } = {};
+    financials.forEach(f => {
+      let identifier = (f as any).partnerId || (f.description ? (f.description.split(' - ').length > 1 ? f.description.split(' - ')[1].trim().toUpperCase() : f.description.trim().toUpperCase()) : '');
+      if (!identifier) return;
+      if (!map[identifier]) {
+        map[identifier] = { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
+      }
+      map[identifier].visitCount += 1;
+      map[identifier].totalSpentOrReceived += Number(f.value || 0);
+      if (f.date) {
+        const dateObj = new Date(f.date + 'T12:00:00');
+        const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
+        const weekNumber = Math.ceil(((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000) + startOfYear.getDay() + 1) / 7);
+        map[identifier].uniqueWeeks.add(weekNumber);
+      }
+    });
+    return map;
+  }, [financials]);
+
   const enrichedCustomers = useMemo(() => {
     return customers.map(c => {
-      // Busca estatísticas pelo ID do cliente ou pelo Nome em maiúsculo
       const stats = clientStatsMap[c.id] || clientStatsMap[c.name.toUpperCase()] || { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
-      const isFrequent = stats.uniqueWeeks.size >= 4 || stats.visitCount >= 8;
+      const globalStats = globalClientStatsMap[c.id] || globalClientStatsMap[c.name.toUpperCase()] || { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
+      
+      const isFrequent = globalStats.uniqueWeeks.size >= 4 || globalStats.visitCount >= 8;
       
       return {
         ...c,
         visitCount: stats.visitCount,
         uniqueWeeksCount: stats.uniqueWeeks.size,
         totalValue: stats.totalSpentOrReceived,
+        globalVisitCount: globalStats.visitCount,
         isFrequent
       };
     });
-  }, [customers, clientStatsMap]);
+  }, [customers, clientStatsMap, globalClientStatsMap]);
 
-  // 4. Top 100 Clientes ordenados por volume de visitas no período
   const top100Customers = useMemo(() => {
     return [...enrichedCustomers]
       .filter(c => c.visitCount > 0)
@@ -299,7 +319,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
                     <td className="px-8 py-5">
                       <div className="flex items-center gap-1.5 font-black text-xs text-slate-700">
                         <Calendar size={14} className={c.isFrequent ? "text-emerald-600" : "text-slate-400"} />
-                        <span>{c.visitCount} visitas ({c.uniqueWeeksCount} semanas distintas)</span>
+                        <span>{c.globalVisitCount} visitas totais</span>
                       </div>
                     </td>
                     <td className="px-8 py-5">
@@ -325,7 +345,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
         </div>
       </div>
 
-      {/* MODAL TOP 100 CLIENTES COM FILTROS */}
+      {/* MODAL TOP 100 CLIENTES */}
       {showTop100Modal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto max-h-[90vh] flex flex-col">
