@@ -21,11 +21,11 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
   // Filtro de frequência da tabela principal
   const [frequencyFilter, setFrequencyFilter] = useState<'todos' | 'frequente' | 'regular'>('todos');
 
-  // Estados de Filtro de Período para o Top 100 (Ano atual por padrão ou "todos")
+  // Estados de Filtro de Período para o Top 100
   const currentYearStr = new Date().getFullYear().toString();
   const [top100Year, setTop100Year] = useState<string>(currentYearStr);
-  const [top100Month, setTop100Month] = useState<string>('todos'); // '01', '02', etc.
-  const [top100Day, setTop100Day] = useState<string>('todos');   // '16', etc.
+  const [top100Month, setTop100Month] = useState<string>('todos');
+  const [top100Day, setTop100Day] = useState<string>('todos');
 
   // Estados controlados para o formulário
   const [zipCode, setZipCode] = useState('');
@@ -117,10 +117,10 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     }
   };
 
-  // 1. Filtragem do Financeiro baseada nos filtros de Período (Ano, Mês, Dia) para o Top 100
+  // 1. Filtragem do Financeiro por Período (Ano, Mês, Dia)
   const filteredFinancialsForTop100 = useMemo(() => {
     return financials.filter(f => {
-      if (!f.date) return false; // Formato esperado: "YYYY-MM-DD"
+      if (!f.date) return false;
       const [fYear, fMonth, fDay] = f.date.split('-');
 
       if (top100Year !== 'todos' && fYear !== top100Year) return false;
@@ -131,38 +131,48 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     });
   }, [financials, top100Year, top100Month, top100Day]);
 
-  // 2. Mapeamento de Frequência e Volume baseado nas movimentações filtradas
+  // 2. Mapeamento robusto combinando partnerId e variação de nomes na descrição
   const clientStatsMap = useMemo(() => {
     const map: { [key: string]: { visitCount: number; uniqueWeeks: Set<number>; totalSpentOrReceived: number } } = {};
 
     filteredFinancialsForTop100.forEach(f => {
-      if (!f.description) return;
-      // Extrai o nome do cliente independentemente de estar estruturado como "COMPRA - NOME" ou similar
-      const parts = f.description.split(' - ');
-      const clientName = parts.length > 1 ? parts[1].trim().toUpperCase() : f.description.trim().toUpperCase();
+      let identifier = '';
 
-      if (!map[clientName]) {
-        map[clientName] = { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
+      // Tenta usar o partnerId se estiver salvo no registro financeiro
+      if ((f as any).partnerId) {
+        identifier = (f as any).partnerId;
+      } else if (f.description) {
+        // Fallback: extrai do texto da descrição (ex: "COMPRA - NOME DO CLIENTE")
+        const parts = f.description.split(' - ');
+        identifier = parts.length > 1 ? parts[1].trim().toUpperCase() : f.description.trim().toUpperCase();
       }
-      map[clientName].visitCount += 1;
-      map[clientName].totalSpentOrReceived += Number(f.value || 0);
+
+      if (!identifier) return;
+
+      if (!map[identifier]) {
+        map[identifier] = { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
+      }
+      map[identifier].visitCount += 1;
+      map[identifier].totalSpentOrReceived += Number(f.value || 0);
 
       if (f.date) {
         const dateObj = new Date(f.date + 'T12:00:00');
         const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
         const weekNumber = Math.ceil(((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000) + startOfYear.getDay() + 1) / 7);
-        map[clientName].uniqueWeeks.add(weekNumber);
+        map[identifier].uniqueWeeks.add(weekNumber);
       }
     });
 
     return map;
   }, [filteredFinancialsForTop100]);
 
-  // 3. Enriquece os clientes cadastrados com os dados processados do financeiro
+  // 3. Cruzamento com a lista de clientes cadastrados (por ID ou por Nome)
   const enrichedCustomers = useMemo(() => {
     return customers.map(c => {
-      const stats = clientStatsMap[c.name.toUpperCase()] || { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
+      // Busca estatísticas pelo ID do cliente ou pelo Nome em maiúsculo
+      const stats = clientStatsMap[c.id] || clientStatsMap[c.name.toUpperCase()] || { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
       const isFrequent = stats.uniqueWeeks.size >= 4 || stats.visitCount >= 8;
+      
       return {
         ...c,
         visitCount: stats.visitCount,
@@ -173,15 +183,14 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     });
   }, [customers, clientStatsMap]);
 
-  // 4. Top 100 Clientes ordenados por volume de visitas e constância no período selecionado
+  // 4. Top 100 Clientes ordenados por volume de visitas no período
   const top100Customers = useMemo(() => {
     return [...enrichedCustomers]
-      .filter(c => c.visitCount > 0) // Mostra apenas quem tem ao menos 1 visita no período filtrado
+      .filter(c => c.visitCount > 0)
       .sort((a, b) => b.uniqueWeeksCount - a.uniqueWeeksCount || b.visitCount - a.visitCount || b.totalValue - a.totalValue)
       .slice(0, 100);
   }, [enrichedCustomers]);
 
-  // Listos disponíveis para os filtros de Ano baseados no histórico
   const availableYears = useMemo(() => {
     const yearsSet = new Set<string>();
     yearsSet.add(currentYearStr);
@@ -194,7 +203,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     return Array.from(yearsSet).sort().reverse();
   }, [financials, currentYearStr]);
 
-  // Aplicação dos filtros de busca e de frequência na tabela principal
   const filteredCustomers = useMemo(() => {
     return enrichedCustomers.filter(c => {
       const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf.includes(searchTerm);
@@ -208,7 +216,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {/* HEADER E BUSCA */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Clientes (PF)</h3>
@@ -235,7 +242,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
         </div>
       </div>
 
-      {/* FILTROS DE FREQUÊNCIA (CORES) */}
       <div className="flex flex-wrap items-center gap-3 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
         <span className="text-[10px] font-black uppercase text-slate-400 ml-2">Filtrar Frequência:</span>
         <button 
@@ -259,7 +265,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
         </button>
       </div>
 
-      {/* TABELA DE CLIENTES */}
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -320,12 +325,11 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
         </div>
       </div>
 
-      {/* MODAL TOP 100 CLIENTES COM FILTROS DE DIA, MÊS E ANO */}
+      {/* MODAL TOP 100 CLIENTES COM FILTROS */}
       {showTop100Modal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto max-h-[90vh] flex flex-col">
             
-            {/* CABEÇALHO DO MODAL */}
             <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50/50 rounded-t-[3rem]">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center font-black">
@@ -339,13 +343,11 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
               <button onClick={() => setShowTop100Modal(false)} className="font-black text-slate-400 hover:text-slate-700 bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs uppercase self-end md:self-auto">Fechar</button>
             </div>
             
-            {/* BARRA DE FILTROS POR PERÍODO (ANO, MÊS, DIA) */}
             <div className="px-8 py-4 bg-slate-100/70 border-b border-slate-200 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-1.5 text-xs font-black text-slate-600 uppercase">
                 <Filter size={14} className="text-indigo-600"/> Filtrar Período:
               </div>
 
-              {/* SELETOR DE ANO */}
               <select 
                 value={top100Year} 
                 onChange={(e) => setTop100Year(e.target.value)}
@@ -357,7 +359,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
                 ))}
               </select>
 
-              {/* SELETOR DE MÊS */}
               <select 
                 value={top100Month} 
                 onChange={(e) => setTop100Month(e.target.value)}
@@ -378,7 +379,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
                 <option value="12">Dezembro</option>
               </select>
 
-              {/* SELETOR DE DIA */}
               <select 
                 value={top100Day} 
                 onChange={(e) => setTop100Day(e.target.value)}
@@ -392,7 +392,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
               </select>
             </div>
 
-            {/* TABELA DO TOP 100 */}
             <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest sticky top-0">
@@ -439,7 +438,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
         </div>
       )}
 
-      {/* MODAL DE CADASTRO / EDIÇÃO */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto">
@@ -492,7 +490,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="bg-white p-8 rounded-[2rem] max-w-sm w-full text-center">
