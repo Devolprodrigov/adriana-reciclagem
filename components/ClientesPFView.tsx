@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Edit3, Trash2, Award, Calendar, TrendingUp } from 'lucide-react';
+import { Plus, Edit3, Trash2, Award, Calendar, TrendingUp, Filter } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CustomerPF, FinancialRecord } from '../types';
@@ -18,8 +18,14 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   
-  // Novo estado para o filtro de frequência
+  // Filtro de frequência da tabela principal
   const [frequencyFilter, setFrequencyFilter] = useState<'todos' | 'frequente' | 'regular'>('todos');
+
+  // Estados de Filtro de Período para o Top 100 (Ano atual por padrão ou "todos")
+  const currentYearStr = new Date().getFullYear().toString();
+  const [top100Year, setTop100Year] = useState<string>(currentYearStr);
+  const [top100Month, setTop100Month] = useState<string>('todos'); // '01', '02', etc.
+  const [top100Day, setTop100Day] = useState<string>('todos');   // '16', etc.
 
   // Estados controlados para o formulário
   const [zipCode, setZipCode] = useState('');
@@ -111,38 +117,51 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     }
   };
 
-  // Mapeia e calcula a frequência de cada cliente com base no financeiro (vendas/compras)
+  // 1. Filtragem do Financeiro baseada nos filtros de Período (Ano, Mês, Dia) para o Top 100
+  const filteredFinancialsForTop100 = useMemo(() => {
+    return financials.filter(f => {
+      if (!f.date) return false; // Formato esperado: "YYYY-MM-DD"
+      const [fYear, fMonth, fDay] = f.date.split('-');
+
+      if (top100Year !== 'todos' && fYear !== top100Year) return false;
+      if (top100Month !== 'todos' && fMonth !== top100Month) return false;
+      if (top100Day !== 'todos' && fDay !== top100Day) return false;
+
+      return true;
+    });
+  }, [financials, top100Year, top100Month, top100Day]);
+
+  // 2. Mapeamento de Frequência e Volume baseado nas movimentações filtradas
   const clientStatsMap = useMemo(() => {
     const map: { [key: string]: { visitCount: number; uniqueWeeks: Set<number>; totalSpentOrReceived: number } } = {};
 
-    financials.forEach(f => {
+    filteredFinancialsForTop100.forEach(f => {
       if (!f.description) return;
+      // Extrai o nome do cliente independentemente de estar estruturado como "COMPRA - NOME" ou similar
       const parts = f.description.split(' - ');
-      if (parts.length > 1) {
-        const clientName = parts[1].trim().toUpperCase();
-        if (!map[clientName]) {
-          map[clientName] = { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
-        }
-        map[clientName].visitCount += 1;
-        map[clientName].totalSpentOrReceived += Number(f.value || 0);
+      const clientName = parts.length > 1 ? parts[1].trim().toUpperCase() : f.description.trim().toUpperCase();
 
-        if (f.date) {
-          const dateObj = new Date(f.date + 'T12:00:00');
-          const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
-          const weekNumber = Math.ceil(((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000) + startOfYear.getDay() + 1) / 7);
-          map[clientName].uniqueWeeks.add(weekNumber);
-        }
+      if (!map[clientName]) {
+        map[clientName] = { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
+      }
+      map[clientName].visitCount += 1;
+      map[clientName].totalSpentOrReceived += Number(f.value || 0);
+
+      if (f.date) {
+        const dateObj = new Date(f.date + 'T12:00:00');
+        const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
+        const weekNumber = Math.ceil(((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000) + startOfYear.getDay() + 1) / 7);
+        map[clientName].uniqueWeeks.add(weekNumber);
       }
     });
 
     return map;
-  }, [financials]);
+  }, [filteredFinancialsForTop100]);
 
-  // Enriquece os clientes com os dados de frequência calculados
+  // 3. Enriquece os clientes cadastrados com os dados processados do financeiro
   const enrichedCustomers = useMemo(() => {
     return customers.map(c => {
       const stats = clientStatsMap[c.name.toUpperCase()] || { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
-      // Considera frequente se veio em 4 ou mais semanas distintas (média de ~1x por semana ou recorrente consistente no ano)
       const isFrequent = stats.uniqueWeeks.size >= 4 || stats.visitCount >= 8;
       return {
         ...c,
@@ -154,14 +173,28 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     });
   }, [customers, clientStatsMap]);
 
-  // Top 100 Clientes ordenados por frequência/volume
+  // 4. Top 100 Clientes ordenados por volume de visitas e constância no período selecionado
   const top100Customers = useMemo(() => {
     return [...enrichedCustomers]
+      .filter(c => c.visitCount > 0) // Mostra apenas quem tem ao menos 1 visita no período filtrado
       .sort((a, b) => b.uniqueWeeksCount - a.uniqueWeeksCount || b.visitCount - a.visitCount || b.totalValue - a.totalValue)
       .slice(0, 100);
   }, [enrichedCustomers]);
 
-  // Aplicação dos filtros de busca e de frequência por cor
+  // Listos disponíveis para os filtros de Ano baseados no histórico
+  const availableYears = useMemo(() => {
+    const yearsSet = new Set<string>();
+    yearsSet.add(currentYearStr);
+    financials.forEach(f => {
+      if (f.date) {
+        const y = f.date.split('-')[0];
+        if (y) yearsSet.add(y);
+      }
+    });
+    return Array.from(yearsSet).sort().reverse();
+  }, [financials, currentYearStr]);
+
+  // Aplicação dos filtros de busca e de frequência na tabela principal
   const filteredCustomers = useMemo(() => {
     return enrichedCustomers.filter(c => {
       const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.cpf.includes(searchTerm);
@@ -241,8 +274,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filteredCustomers.length > 0 ? filteredCustomers.map(c => {
-                // Linha ganha cor verde suave se for frequente (vem ao menos 1x na semana no histórico)
-                const rowStyle = c.isPreset || c.isFrequent 
+                const rowStyle = c.isFrequent 
                   ? 'bg-emerald-50/60 hover:bg-emerald-100/50 border-l-4 border-emerald-500' 
                   : 'hover:bg-slate-50/50';
 
@@ -288,23 +320,79 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
         </div>
       </div>
 
-      {/* MODAL TOP 100 CLIENTES */}
+      {/* MODAL TOP 100 CLIENTES COM FILTROS DE DIA, MÊS E ANO */}
       {showTop100Modal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto max-h-[85vh] flex flex-col">
-            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-[3rem]">
+          <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto max-h-[90vh] flex flex-col">
+            
+            {/* CABEÇALHO DO MODAL */}
+            <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50/50 rounded-t-[3rem]">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center font-black">
                   <Award size={22} />
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Top 100 Clientes Mais Frequentes</h2>
-                  <p className="text-xs font-bold text-slate-400">Classificação baseada na constância de visitas ao longo do ano</p>
+                  <p className="text-xs font-bold text-slate-400">Classificação baseada nas vendas registradas no período</p>
                 </div>
               </div>
-              <button onClick={() => setShowTop100Modal(false)} className="font-black text-slate-400 hover:text-slate-700 bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs uppercase">Fechar</button>
+              <button onClick={() => setShowTop100Modal(false)} className="font-black text-slate-400 hover:text-slate-700 bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs uppercase self-end md:self-auto">Fechar</button>
             </div>
             
+            {/* BARRA DE FILTROS POR PERÍODO (ANO, MÊS, DIA) */}
+            <div className="px-8 py-4 bg-slate-100/70 border-b border-slate-200 flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5 text-xs font-black text-slate-600 uppercase">
+                <Filter size={14} className="text-indigo-600"/> Filtrar Período:
+              </div>
+
+              {/* SELETOR DE ANO */}
+              <select 
+                value={top100Year} 
+                onChange={(e) => setTop100Year(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+              >
+                <option value="todos">Todos os Anos</option>
+                {availableYears.map(y => (
+                  <option key={y} value={y}>Ano: {y}</option>
+                ))}
+              </select>
+
+              {/* SELETOR DE MÊS */}
+              <select 
+                value={top100Month} 
+                onChange={(e) => setTop100Month(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+              >
+                <option value="todos">Todos os Meses</option>
+                <option value="01">Janeiro</option>
+                <option value="02">Fevereiro</option>
+                <option value="03">Março</option>
+                <option value="04">Abril</option>
+                <option value="05">Maio</option>
+                <option value="06">Junho</option>
+                <option value="07">Julho</option>
+                <option value="08">Agosto</option>
+                <option value="09">Setembro</option>
+                <option value="10">Outubro</option>
+                <option value="11">Novembro</option>
+                <option value="12">Dezembro</option>
+              </select>
+
+              {/* SELETOR DE DIA */}
+              <select 
+                value={top100Day} 
+                onChange={(e) => setTop100Day(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+              >
+                <option value="todos">Todos os Dias</option>
+                {Array.from({ length: 31 }, (_, i) => {
+                  const d = String(i + 1).padStart(2, '0');
+                  return <option key={d} value={d}>Dia {i + 1}</option>;
+                })}
+              </select>
+            </div>
+
+            {/* TABELA DO TOP 100 */}
             <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest sticky top-0">
@@ -317,7 +405,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {top100Customers.map((c, index) => (
+                  {top100Customers.length > 0 ? top100Customers.map((c, index) => (
                     <tr key={c.id || index} className="hover:bg-slate-50/50">
                       <td className="px-6 py-4 font-black text-indigo-600">
                         {index === 0 ? '🥇 1º' : index === 1 ? '🥈 2º' : index === 2 ? '🥉 3º' : `${index + 1}º`}
@@ -337,7 +425,13 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
                         )}
                       </td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr>
+                      <td colSpan={5} className="text-center py-16 text-slate-400 text-xs font-bold uppercase tracking-widest">
+                        Nenhum registro de atendimento encontrado para este período.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
