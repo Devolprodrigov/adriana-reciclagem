@@ -598,7 +598,9 @@ const App: React.FC = () => {
 
             {activeTab === 'estoque' && userRole === 'admin' && <EstoqueView products={products} notify={notify} />}
 
-            {activeTab === 'pf-clientes' && <ClientesPFView customers={customersPF} notify={notify} />}
+            {/* CORREÇÃO APLICADA AQUI: Adicionado financials={financials} */}
+
+            {activeTab === 'pf-clientes' && <ClientesPFView customers={customersPF} financials={financials} notify={notify} />}
 
             {activeTab === 'pj-clientes' && <ClientesPJView customers={customersPJ} notify={notify} />}
 
@@ -617,6 +619,7 @@ const App: React.FC = () => {
                 notify={notify} 
 
                 operatorName={userName}
+
                 userRole={userRole} 
 
               />
