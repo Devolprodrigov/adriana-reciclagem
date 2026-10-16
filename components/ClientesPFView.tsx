@@ -117,13 +117,11 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     }
   };
 
-  // Função auxiliar para normalizar textos (remover acentos e colocar em maiúsculo)
   const normalizeText = (str: string) => {
     if (!str) return '';
     return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
   };
 
-  // Filtragem do Financeiro por Período
   const filteredFinancialsForTop100 = useMemo(() => {
     return financials.filter(f => {
       if (!f.date) return false;
@@ -137,7 +135,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     });
   }, [financials, top100Year, top100Month, top100Day]);
 
-  // Cruzamento inteligente e tolerante entre os clientes e o financeiro
   const enrichedCustomers = useMemo(() => {
     return customers.map(c => {
       const normalizedCustomerName = normalizeText(c.name);
@@ -148,7 +145,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
       let globalVisitCount = 0;
       const globalUniqueWeeks = new Set<number>();
 
-      // Verifica no período filtrado do modal
       filteredFinancialsForTop100.forEach(f => {
         const descNormalized = normalizeText(f.description || '');
         const partnerIdMatch = (f as any).partnerId === c.id;
@@ -167,7 +163,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
         }
       });
 
-      // Verifica no histórico global para os cards da tabela principal
       financials.forEach(f => {
         const descNormalized = normalizeText(f.description || '');
         const partnerIdMatch = (f as any).partnerId === c.id;
@@ -338,22 +333,22 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
         </div>
       </div>
 
-      {/* MODAL TOP 100 CLIENTES */}
+      {/* MODAL TOP 100 CLIENTES CORRIGIDO (VISUAL ELEGANTE E ESPAÇADO) */}
       {showTop100Modal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-4xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto max-h-[90vh] flex flex-col">
+          <div className="bg-white w-full max-w-5xl rounded-[3rem] shadow-2xl animate-in zoom-in-95 my-auto max-h-[90vh] flex flex-col">
             
             <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50/50 rounded-t-[3rem]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center font-black">
-                  <Award size={22} />
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center font-black">
+                  <Award size={26} />
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Top 100 Clientes Mais Frequentes</h2>
                   <p className="text-xs font-bold text-slate-400">Classificação baseada nas vendas registradas no período</p>
                 </div>
               </div>
-              <button onClick={() => setShowTop100Modal(false)} className="font-black text-slate-400 hover:text-slate-700 bg-white px-4 py-2 rounded-xl border border-slate-200 text-xs uppercase self-end md:self-auto">Fechar</button>
+              <button onClick={() => setShowTop100Modal(false)} className="font-black text-slate-400 hover:text-slate-700 bg-white px-5 py-2.5 rounded-2xl border border-slate-200 text-xs uppercase self-end md:self-auto shadow-sm">Fechar</button>
             </div>
             
             <div className="px-8 py-4 bg-slate-100/70 border-b border-slate-200 flex flex-wrap items-center gap-3">
@@ -364,7 +359,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
               <select 
                 value={top100Year} 
                 onChange={(e) => setTop100Year(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+                className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none shadow-sm cursor-pointer"
               >
                 <option value="todos">Todos os Anos</option>
                 {availableYears.map(y => (
@@ -375,7 +370,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
               <select 
                 value={top100Month} 
                 onChange={(e) => setTop100Month(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+                className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none shadow-sm cursor-pointer"
               >
                 <option value="todos">Todos os Meses</option>
                 <option value="01">Janeiro</option>
@@ -395,7 +390,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
               <select 
                 value={top100Day} 
                 onChange={(e) => setTop100Day(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none"
+                className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none shadow-sm cursor-pointer"
               >
                 <option value="todos">Todos os Dias</option>
                 {Array.from({ length: 31 }, (_, i) => {
@@ -406,32 +401,32 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
             </div>
 
             <div className="p-6 overflow-y-auto flex-1 custom-scrollbar">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest sticky top-0">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <th className="px-6 py-4"># Posição</th>
+                    <th className="px-6 py-4 w-28"># Posição</th>
                     <th className="px-6 py-4">Nome do Cliente</th>
-                    <th className="px-6 py-4">Semanas Ativas</th>
-                    <th className="px-6 py-4">Total de Visitas</th>
-                    <th className="px-6 py-4 text-right">Status</th>
+                    <th className="px-6 py-4 w-44">Semanas Ativas</th>
+                    <th className="px-6 py-4 w-36">Total de Visitas</th>
+                    <th className="px-6 py-4 text-right w-40">Status</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-100">
                   {top100Customers.length > 0 ? top100Customers.map((c, index) => (
-                    <tr key={c.id || index} className="hover:bg-slate-50/50">
-                      <td className="px-6 py-4 font-black text-indigo-600">
+                    <tr key={c.id || index} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-6 py-5 font-black text-indigo-600 text-sm">
                         {index === 0 ? '🥇 1º' : index === 1 ? '🥈 2º' : index === 2 ? '🥉 3º' : `${index + 1}º`}
                       </td>
-                      <td className="px-6 py-4 font-black text-slate-800 text-sm">{c.name}</td>
-                      <td className="px-6 py-4 font-bold text-xs text-slate-600">{c.uniqueWeeksCount} semanas distintas</td>
-                      <td className="px-6 py-4 font-black text-xs text-slate-700">{c.visitCount} vezes</td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-5 font-black text-slate-800 text-sm">{c.name}</td>
+                      <td className="px-6 py-5 font-bold text-xs text-slate-600 whitespace-nowrap">{c.uniqueWeeksCount} semanas distintas</td>
+                      <td className="px-6 py-5 font-black text-xs text-slate-700 whitespace-nowrap">{c.visitCount} vezes</td>
+                      <td className="px-6 py-5 text-right whitespace-nowrap">
                         {c.isFrequent ? (
-                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-3 py-1 rounded-full uppercase">
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-3.5 py-1.5 rounded-full uppercase inline-block">
                             1x+ por Semana
                           </span>
                         ) : (
-                          <span className="bg-slate-100 text-slate-600 text-[10px] font-black px-3 py-1 rounded-full uppercase">
+                          <span className="bg-slate-100 text-slate-600 text-[10px] font-black px-3.5 py-1.5 rounded-full uppercase inline-block">
                             Regular
                           </span>
                         )}
@@ -439,7 +434,7 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={5} className="text-center py-16 text-slate-400 text-xs font-bold uppercase tracking-widest">
+                      <td colSpan={5} className="text-center py-20 text-slate-400 text-xs font-bold uppercase tracking-widest">
                         Nenhum registro de atendimento encontrado para este período.
                       </td>
                     </tr>
