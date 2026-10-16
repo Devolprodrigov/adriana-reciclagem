@@ -20,7 +20,6 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
   
   const [frequencyFilter, setFrequencyFilter] = useState<'todos' | 'frequente' | 'regular'>('todos');
 
-  // Inicializa com o Ano e o Mês atual real do sistema (Ex: 2026 e 10 para Outubro)
   const now = new Date();
   const currentYearStr = now.getFullYear().toString();
   const currentMonthStr = String(now.getMonth() + 1).padStart(2, '0');
@@ -118,6 +117,12 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     }
   };
 
+  // Função auxiliar para normalizar textos (remover acentos e colocar em maiúsculo)
+  const normalizeText = (str: string) => {
+    if (!str) return '';
+    return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+  };
+
   // Filtragem do Financeiro por Período
   const filteredFinancialsForTop100 = useMemo(() => {
     return financials.filter(f => {
@@ -132,77 +137,65 @@ const ClientesPFView: React.FC<Props> = ({ customers, financials = [], notify })
     });
   }, [financials, top100Year, top100Month, top100Day]);
 
-  // Mapeamento robusto combinando partnerId e variação de nomes na descrição
-  const clientStatsMap = useMemo(() => {
-    const map: { [key: string]: { visitCount: number; uniqueWeeks: Set<number>; totalSpentOrReceived: number } } = {};
-
-    filteredFinancialsForTop100.forEach(f => {
-      let identifier = '';
-
-      if ((f as any).partnerId) {
-        identifier = (f as any).partnerId;
-      } else if (f.description) {
-        const parts = f.description.split(' - ');
-        identifier = parts.length > 1 ? parts[1].trim().toUpperCase() : f.description.trim().toUpperCase();
-      }
-
-      if (!identifier) return;
-
-      if (!map[identifier]) {
-        map[identifier] = { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
-      }
-      map[identifier].visitCount += 1;
-      map[identifier].totalSpentOrReceived += Number(f.value || 0);
-
-      if (f.date) {
-        const dateObj = new Date(f.date + 'T12:00:00');
-        const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
-        const weekNumber = Math.ceil(((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000) + startOfYear.getDay() + 1) / 7);
-        map[identifier].uniqueWeeks.add(weekNumber);
-      }
-    });
-
-    return map;
-  }, [filteredFinancialsForTop100]);
-
-  // Cruzamento global com o financeiro total para a tabela principal (independente do filtro do modal)
-  const globalClientStatsMap = useMemo(() => {
-    const map: { [key: string]: { visitCount: number; uniqueWeeks: Set<number>; totalSpentOrReceived: number } } = {};
-    financials.forEach(f => {
-      let identifier = (f as any).partnerId || (f.description ? (f.description.split(' - ').length > 1 ? f.description.split(' - ')[1].trim().toUpperCase() : f.description.trim().toUpperCase()) : '');
-      if (!identifier) return;
-      if (!map[identifier]) {
-        map[identifier] = { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
-      }
-      map[identifier].visitCount += 1;
-      map[identifier].totalSpentOrReceived += Number(f.value || 0);
-      if (f.date) {
-        const dateObj = new Date(f.date + 'T12:00:00');
-        const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
-        const weekNumber = Math.ceil(((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000) + startOfYear.getDay() + 1) / 7);
-        map[identifier].uniqueWeeks.add(weekNumber);
-      }
-    });
-    return map;
-  }, [financials]);
-
+  // Cruzamento inteligente e tolerante entre os clientes e o financeiro
   const enrichedCustomers = useMemo(() => {
     return customers.map(c => {
-      const stats = clientStatsMap[c.id] || clientStatsMap[c.name.toUpperCase()] || { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
-      const globalStats = globalClientStatsMap[c.id] || globalClientStatsMap[c.name.toUpperCase()] || { visitCount: 0, uniqueWeeks: new Set(), totalSpentOrReceived: 0 };
-      
-      const isFrequent = globalStats.uniqueWeeks.size >= 4 || globalStats.visitCount >= 8;
-      
+      const normalizedCustomerName = normalizeText(c.name);
+      let visitCount = 0;
+      let totalValue = 0;
+      const uniqueWeeks = new Set<number>();
+
+      let globalVisitCount = 0;
+      const globalUniqueWeeks = new Set<number>();
+
+      // Verifica no período filtrado do modal
+      filteredFinancialsForTop100.forEach(f => {
+        const descNormalized = normalizeText(f.description || '');
+        const partnerIdMatch = (f as any).partnerId === c.id;
+        const nameMatch = descNormalized.includes(normalizedCustomerName);
+
+        if (partnerIdMatch || nameMatch) {
+          visitCount += 1;
+          totalValue += Number(f.value || 0);
+
+          if (f.date) {
+            const dateObj = new Date(f.date + 'T12:00:00');
+            const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
+            const weekNumber = Math.ceil(((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000) + startOfYear.getDay() + 1) / 7);
+            uniqueWeeks.add(weekNumber);
+          }
+        }
+      });
+
+      // Verifica no histórico global para os cards da tabela principal
+      financials.forEach(f => {
+        const descNormalized = normalizeText(f.description || '');
+        const partnerIdMatch = (f as any).partnerId === c.id;
+        const nameMatch = descNormalized.includes(normalizedCustomerName);
+
+        if (partnerIdMatch || nameMatch) {
+          globalVisitCount += 1;
+          if (f.date) {
+            const dateObj = new Date(f.date + 'T12:00:00');
+            const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
+            const weekNumber = Math.ceil(((dateObj.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000) + startOfYear.getDay() + 1) / 7);
+            globalUniqueWeeks.add(weekNumber);
+          }
+        }
+      });
+
+      const isFrequent = globalUniqueWeeks.size >= 4 || globalVisitCount >= 8;
+
       return {
         ...c,
-        visitCount: stats.visitCount,
-        uniqueWeeksCount: stats.uniqueWeeks.size,
-        totalValue: stats.totalSpentOrReceived,
-        globalVisitCount: globalStats.visitCount,
+        visitCount,
+        uniqueWeeksCount: uniqueWeeks.size,
+        totalValue,
+        globalVisitCount,
         isFrequent
       };
     });
-  }, [customers, clientStatsMap, globalClientStatsMap]);
+  }, [customers, filteredFinancialsForTop100, financials]);
 
   const top100Customers = useMemo(() => {
     return [...enrichedCustomers]
