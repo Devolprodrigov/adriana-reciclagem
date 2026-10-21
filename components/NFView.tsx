@@ -13,30 +13,22 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 
 const NFView: React.FC<Props> = ({ financials = [], products = [], notify = () => {} }) => {
   const urlEmissorSebrae = "https://18560350000178.emissornfe.sebrae.com.br/index-sebrae.html#/home";
   
-  // Controle de Abas internas: 'emissor' ou 'relatorio'
   const [activeTab, setActiveTab] = useState<'emissor' | 'relatorio'>('emissor');
-
-  // Filtros para o Relatório Analítico
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedPartner, setSelectedPartner] = useState('');
 
-  // Agrupamento e filtro dos dados financeiros/entradas para o Relatório Analítico
   const filteredEntries = useMemo(() => {
     return financials.filter(f => {
       if (!f.date) return false;
       const matchesStart = startDate ? f.date >= startDate : true;
       const matchesEnd = endDate ? f.date <= endDate : true;
-      
       const desc = (f.description || '').toUpperCase();
       const matchesPart = selectedPartner ? desc.includes(selectedPartner.toUpperCase()) : true;
-
-      // Foca em transações relevantes de entrada/saída comercial
       return matchesStart && matchesEnd && matchesPart;
     });
   }, [financials, startDate, endDate, selectedPartner]);
 
-  // Lista única de parceiros/fornecedores extraídos das descrições (padrão " - NOME")
   const partnersList = useMemo(() => {
     const setNames = new Set<string>();
     financials.forEach(f => {
@@ -55,8 +47,34 @@ const NFView: React.FC<Props> = ({ financials = [], products = [], notify = () =
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500">
       
-      {/* SELETOR DE ABAS */}
-      <div className="flex bg-white p-2 rounded-3xl border border-slate-100 shadow-sm max-w-md mx-auto">
+      {/* ESTILOS CSS PARA IMPRESSÃO LIMPA (OCULTA MENUS E BOTÕES) */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #printable-report, #printable-report * {
+            visibility: visible;
+          }
+          #printable-report {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            margin: 0;
+            padding: 20px;
+            background: white !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      {/* SELETOR DE ABAS (Oculto na impressão) */}
+      <div className="flex bg-white p-2 rounded-3xl border border-slate-100 shadow-sm max-w-md mx-auto no-print">
         <button
           onClick={() => setActiveTab('emissor')}
           className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
@@ -76,7 +94,7 @@ const NFView: React.FC<Props> = ({ financials = [], products = [], notify = () =
       </div>
 
       {activeTab === 'emissor' ? (
-        <>
+        <div className="no-print space-y-6">
           {/* CARD PRINCIPAL DE ACESSO */}
           <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100 flex flex-col items-center text-center space-y-6">
             <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center shadow-sm">
@@ -96,7 +114,6 @@ const NFView: React.FC<Props> = ({ financials = [], products = [], notify = () =
 
             <hr className="w-full border-slate-100" />
 
-            {/* BOTÃO DE DISPARO RÁPIDO */}
             <a 
               href={urlEmissorSebrae} 
               target="_blank" 
@@ -108,7 +125,6 @@ const NFView: React.FC<Props> = ({ financials = [], products = [], notify = () =
             </a>
           </div>
 
-          {/* CARD DE INFORMAÇÕES EXTRAS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white p-6 rounded-3xl border border-slate-100 flex gap-4 items-start">
               <div className="p-2.5 bg-slate-50 text-slate-500 rounded-xl shrink-0">
@@ -117,7 +133,7 @@ const NFView: React.FC<Props> = ({ financials = [], products = [], notify = () =
               <div>
                 <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-wider">Sessão Exclusiva</h4>
                 <p className="text-[11px] font-medium text-slate-400 mt-1">
-                  O link acima aponta diretamente para o ambiente dedicado da **Adriana Reciclagem**, agilizando o preenchimento dos dados.
+                  O link acima aponta diretamente para o ambiente dedicado da **Adriana Reciclagem**.
                 </p>
               </div>
             </div>
@@ -129,30 +145,35 @@ const NFView: React.FC<Props> = ({ financials = [], products = [], notify = () =
               <div>
                 <h4 className="text-[11px] font-black text-slate-700 uppercase tracking-wider">Fechamento de Caixa</h4>
                 <p className="text-[11px] font-medium text-slate-400 mt-1">
-                  Após emitir a nota fiscal por lá, lembre-se de conferir se a movimentação financeira foi devidamente lançada na aba **Financeiro** do seu ERP.
+                  Após emitir a nota fiscal, lembre-se de conferir se a movimentação foi lançada na aba **Financeiro**.
                 </p>
               </div>
             </div>
           </div>
-        </>
+        </div>
       ) : (
-        /* ABA DE RELATÓRIO ANALÍTICO (ESTILO CORADIN) */
-        <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-100 space-y-6">
+        /* ABA DE RELATÓRIO ANALÍTICO - ENVOLVIDA PELA TAG COM ID printable-report */
+        <div id="printable-report" className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-100 space-y-6">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-6">
             <div>
               <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest block">ADRIANA RECICLAGEM LTDA</span>
               <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Relatório Analítico de Entradas / Operações</h3>
+              {startDate && endDate && (
+                <p className="text-[10px] font-bold text-slate-400 mt-1">
+                  Período de: {startDate.split('-').reverse().join('/')} até {endDate.split('-').reverse().join('/')}
+                </p>
+              )}
             </div>
             <button
               onClick={handlePrint}
-              className="flex items-center gap-2 px-5 py-3 bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-slate-900 transition-all shadow-md"
+              className="no-print flex items-center gap-2 px-5 py-3 bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-slate-900 transition-all shadow-md"
             >
               <Printer size={16} /> Imprimir / Salvar PDF
             </button>
           </div>
 
-          {/* FILTROS DO RELATÓRIO */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-100">
+          {/* FILTROS DO RELATÓRIO (Ocultos na impressão) */}
+          <div className="no-print grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-100">
             <div>
               <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Filtrar por Fornecedor/Parceiro</label>
               <select
