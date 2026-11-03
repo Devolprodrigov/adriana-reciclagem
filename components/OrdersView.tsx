@@ -249,6 +249,47 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
     printTicket(mockItems, partnerName, record.value, type, customDate, record.paymentMethod, savedOperator, savedTime, savedPixKey, true);
   };
 
+  const handleCancelOrder = async (record: FinancialRecord) => {
+    if (!window.confirm(`Deseja realmente cancelar este ticket (${record.description})? O estoque será estornado e o valor zerado.`)) {
+      return;
+    }
+
+    try {
+      const batch = writeBatch(db);
+      const savedItems = (record as any).itemsSnapshot;
+      const isSale = record.type === 'receita';
+
+      if (Array.isArray(savedItems) && savedItems.length > 0) {
+        for (const item of savedItems) {
+          const matchingProduct = products.find(p => p.name.toUpperCase() === item.productName);
+          if (matchingProduct) {
+            const productRef = doc(db, 'products', matchingProduct.id);
+            const updatedStock = isSale 
+              ? matchingProduct.stock + Number(item.quantity) 
+              : matchingProduct.stock - Number(item.quantity);
+            
+            batch.update(productRef, { stock: updatedStock });
+          }
+        }
+      }
+
+      const financialRef = doc(db, 'financials', record.id);
+      batch.update(financialRef, {
+        status: 'cancelado',
+        value: 0,
+        description: `[CANCELADO] ${record.description}`,
+        cancelledAt: serverTimestamp(),
+        cancelledBy: operatorName
+      });
+
+      await batch.commit();
+      notify("Ticket cancelado e estoque estornado com sucesso!");
+    } catch (error) {
+      console.error("Erro ao cancelar ticket:", error);
+      notify("Erro ao processar o cancelamento do ticket.");
+    }
+  };
+
   const handleFinish = async () => {
     if (cart.length === 0 || !selectedPartner) return;
     const currentOrderType = orderType;
@@ -311,7 +352,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
 
   const filteredOrders = useMemo(() => {
     return financials.filter(f => {
-      const isOrder = f.description.startsWith('COMPRA') || f.description.startsWith('VENDA');
+      const isOrder = f.description.startsWith('COMPRA') || f.description.startsWith('VENDA') || f.description.startsWith('[CANCELADO]');
       if (!isOrder || !f.date) return false;
       return f.date.startsWith(selectedMonth);
     });
@@ -504,7 +545,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
       {userRole === 'admin' && (
         <div className="lg:col-span-12 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-50 pb-4">
-            <h4 className="font-black text-lg uppercase tracking-tight">Segunda Via de Tickets</h4>
+            <h4 className="font-black text-lg uppercase tracking-tight">Segunda Via de Tickets e Cancelamentos</h4>
             <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-transparent text-xs font-black text-slate-700 border p-2 rounded-xl uppercase" />
           </div>
 
@@ -522,7 +563,7 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
               </thead>
               <tbody>
                 {filteredOrders.length > 0 ? filteredOrders.map(record => (
-                  <tr key={record.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors text-xs font-bold text-slate-700">
+                  <tr key={record.id} className={`border-b border-slate-50 hover:bg-slate-50/50 transition-colors text-xs font-bold ${record.status === 'cancelado' ? 'opacity-40 bg-rose-50/30 line-through' : 'text-slate-700'}`}>
                     <td className="py-4 uppercase">{record.paymentMethod === 'dinheiro' ? 'CAIXA FISICO' : 'PIX / BANCO'}</td>
                     <td className="py-4 font-black">{record.description}</td>
                     <td className="py-4 font-black text-indigo-600 uppercase">{(record as any).operator || 'SISTEMA'}</td>
@@ -531,8 +572,11 @@ const OrdersView: React.FC<Props> = ({ products, financials, customersPF, custom
                       {(record as any).time ? ` às ${(record as any).time}` : ''}
                     </td>
                     <td className="py-4 font-black text-slate-800">{formatCurrency(record.value)}</td>
-                    <td className="py-4 text-right">
-                      <button onClick={() => handleReprintHistory(record)} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors">Reimprimir</button>
+                    <td className="py-4 text-right space-x-2">
+                      <button onClick={() => handleReprintHistory(record)} className="px-3 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-colors">Reimprimir</button>
+                      {record.status !== 'cancelado' && (
+                        <button onClick={() => handleCancelOrder(record)} className="px-3 py-2 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-rose-600 hover:text-white transition-colors">Cancelar</button>
+                      )}
                     </td>
                   </tr>
                 )) : (
