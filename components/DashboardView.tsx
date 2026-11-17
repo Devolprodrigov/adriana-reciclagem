@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { History, AlertTriangle, TrendingUp, ArrowUpRight, ArrowDownLeft, Activity, Filter, BarChart2 } from 'lucide-react';
+import { History, AlertTriangle, TrendingUp, ArrowUpRight, ArrowDownLeft, Activity, Filter, BarChart2, Package, Layers } from 'lucide-react';
 import { FinancialRecord, Product } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
 
@@ -24,8 +24,12 @@ const StatBox = ({ title, value, sub, color, icon: Icon }: any) => (
 );
 
 const DashboardView: React.FC<Props> = ({ financials, products }) => {
-  // Filtro de Período Rápido
+  // Filtro de Período Rápido Global
   const [selectedFilter, setSelectedFilter] = useState<'mes_atual' | 'mes_anterior' | 'todos'>('todos');
+
+  // Filtros específicos para os gráficos
+  const [materialViewMode, setMaterialViewMode] = useState<'top15' | 'bottom15'>('top15');
+  const [financialMetricMode, setFinancialMetricMode] = useState<'ambos' | 'receita' | 'despesa'>('ambos');
 
   // Filtrar lançamentos baseado no período selecionado
   const filteredFinancials = useMemo(() => {
@@ -54,41 +58,83 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
       .reduce((a, b) => a + Number(b.value), 0);
       
     const lowStock = products.filter(p => Number(p.stock) <= Number(p.minStock)).length;
-    const estimatedNetProfit = revenue > 0 ? (revenue - expense) * 0.85 : 0; // Estimativa de Lucro Líquido
+    const estimatedNetProfit = revenue > 0 ? (revenue - expense) * 0.85 : 0; 
     
     return { revenue, expense, balance: revenue - expense, lowStock, estimatedNetProfit };
   }, [filteredFinancials, products]);
 
-  // Dados para o Gráfico de Comparativo (Receitas x Despesas por Mês ou Categoria)
-  const categoryChartData = useMemo(() => {
-    const groups: { [key: string]: { name: string; receita: number; despesa: number } } = {};
-    
-    filteredFinancials.forEach(f => {
-      const cat = f.category || 'GERAL';
-      if (!groups[cat]) {
-        groups[cat] = { name: cat, receita: 0, despesa: 0 };
-      }
-      if (f.type === 'receita' || f.type === 'entrada') {
-        groups[cat].receita += Number(f.value);
-      } else {
-        groups[cat].despesa += Number(f.value);
+  // 1. Dados para o Gráfico Comparativo do Ano (Custos e Ganhos por Mês)
+  const yearlyComparisonData = useMemo(() => {
+    const monthsMap: { [key: string]: { name: string; receita: number; despesa: number; saldo: number } } = {
+      '01': { name: 'Jan', receita: 0, despesa: 0, saldo: 0 },
+      '02': { name: 'Fev', receita: 0, despesa: 0, saldo: 0 },
+      '03': { name: 'Mar', receita: 0, despesa: 0, saldo: 0 },
+      '04': { name: 'Abr', receita: 0, despesa: 0, saldo: 0 },
+      '05': { name: 'Mai', receita: 0, despesa: 0, saldo: 0 },
+      '06': { name: 'Jun', receita: 0, despesa: 0, saldo: 0 },
+      '07': { name: 'Jul', receita: 0, despesa: 0, saldo: 0 },
+      '08': { name: 'Ago', receita: 0, despesa: 0, saldo: 0 },
+      '09': { name: 'Set', receita: 0, despesa: 0, saldo: 0 },
+      '10': { name: 'Out', receita: 0, despesa: 0, saldo: 0 },
+      '11': { name: 'Nov', receita: 0, despesa: 0, saldo: 0 },
+      '12': { name: 'Dez', receita: 0, despesa: 0, saldo: 0 },
+    };
+
+    const currentYear = new Date().getFullYear().toString();
+
+    financials.forEach(f => {
+      if (!f.date) return;
+      const [year, month] = f.date.split('-');
+      if (year === currentYear && monthsMap[month]) {
+        const val = Number(f.value) || 0;
+        if (f.type === 'receita' || f.type === 'entrada') {
+          monthsMap[month].receita += val;
+        } else if (f.type === 'despesa' || f.type === 'saida') {
+          monthsMap[month].despesa += val;
+        }
+        monthsMap[month].saldo = monthsMap[month].receita - monthsMap[month].despesa;
       }
     });
 
-    return Object.values(groups).slice(0, 6);
-  }, [filteredFinancials]);
+    return Object.values(monthsMap);
+  }, [financials]);
 
-  // Dados para o Gráfico de Desempenho dos Últimos Meses
-  const monthlyChartData = useMemo(() => {
-    return [
-      { name: 'Jun', valor: 45000 },
-      { name: 'Jul', valor: 52000 },
-      { name: 'Ago', valor: 48000 },
-      { name: 'Set', valor: 61000 },
-      { name: 'Out', valor: 55000 },
-      { name: 'Atual', valor: stats.revenue || 0 },
-    ];
-  }, [stats.revenue]);
+  // 2. Dados para o Ranking de Materiais (Top 15 Mais Vendidos / Menos Vendidos)
+  const materialRankingData = useMemo(() => {
+    const productStats: { [key: string]: { name: string; totalQtd: number; totalValor: number } } = {};
+
+    // Mapear produtos e acumular movimentações ou estoque base
+    products.forEach(p => {
+      const name = p.name || 'Material sem nome';
+      if (!productStats[name]) {
+        productStats[name] = { name, totalQtd: Number(p.stock) || 0, totalValor: 0 };
+      }
+    });
+
+    // Somar movimentações financeiras/pedidos associados se houver descrição correspondente
+    filteredFinancials.forEach(f => {
+      const desc = f.description || f.category || 'Outros';
+      if (!productStats[desc]) {
+        productStats[desc] = { name: desc, totalQtd: 0, totalValor: 0 };
+      }
+      productStats[desc].totalValor += Number(f.value) || 0;
+      if (f.type === 'receita' || f.type === 'entrada') {
+        productStats[desc].totalQtd += 1; // Indicador de giro
+      }
+    });
+
+    const list = Object.values(productStats);
+    
+    // Ordenar por volume/quantidade ou valor
+    list.sort((a, b) => b.totalValor - a.totalValor);
+
+    if (materialViewMode === 'top15') {
+      return list.slice(0, 15);
+    } else {
+      // Menos vendidos (inverter a lista e pegar os primeiros 15)
+      return [...list].reverse().slice(0, 15);
+    }
+  }, [products, filteredFinancials, materialViewMode]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -99,7 +145,7 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* FILTRO DE PERÍODO */}
+          {/* FILTRO DE PERÍODO GLOBAL */}
           <div className="bg-white border border-slate-100 p-1.5 rounded-2xl flex items-center gap-1 shadow-sm">
             <Filter size={14} className="text-slate-400 ml-2" />
             <button onClick={() => setSelectedFilter('todos')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${selectedFilter === 'todos' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>Geral</button>
@@ -138,48 +184,78 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
         </div>
       </div>
 
+      {/* GRÁFICOS COM FILTROS DE VISIBILIDADE AVANÇADOS */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* GRÁFICO 1: DESEMPENHO MENSAL */}
-        <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-           <div className="flex justify-between items-center mb-8">
-              <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase text-sm tracking-tight"><TrendingUp size={20} className="text-indigo-600"/> Desempenho Faturamento</h3>
-              <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-50 px-3 py-1 rounded-full tracking-widest">Evolução</span>
+        
+        {/* GRÁFICO 1: COMPARATIVO DO ANO (CUSTOS X GANHOS POR MÊS) */}
+        <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm flex flex-col justify-between">
+           <div>
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+                <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase text-sm tracking-tight">
+                  <TrendingUp size={20} className="text-indigo-600"/> Comparativo Anual (Custos e Ganhos)
+                </h3>
+                
+                {/* FILTROS DE MÉTRICA DO GRÁFICO */}
+                <div className="bg-slate-50 p-1 rounded-xl flex items-center gap-1 border border-slate-100">
+                  <button onClick={() => setFinancialMetricMode('ambos')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${financialMetricMode === 'ambos' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Ambos</button>
+                  <button onClick={() => setFinancialMetricMode('receita')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${financialMetricMode === 'receita' ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}>Ganhos</button>
+                  <button onClick={() => setFinancialMetricMode('despesa')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${financialMetricMode === 'despesa' ? 'bg-rose-600 text-white' : 'text-slate-500'}`}>Custos</button>
+                </div>
+             </div>
+             <p className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">Evolução financeira mês a mês no ano atual</p>
            </div>
-           <div className="h-64 w-full">
+
+           <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyChartData}>
+                <BarChart data={yearlyComparisonData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700, fill: '#94a3b8'}} />
-                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
-                  <Bar dataKey="valor" radius={[10, 10, 10, 10]} barSize={40}>
-                    {monthlyChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={index === monthlyChartData.length - 1 ? '#4f46e5' : '#e2e8f0'} />
-                    ))}
-                  </Bar>
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 700, fill: '#94a3b8'}} tickFormatter={(val) => `R$ ${val / 1000}k`} />
+                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} formatter={(val: any) => formatCurrency(Number(val))} />
+                  <Legend wrapperStyle={{fontSize: '10px', fontWeight: 'bold', paddingTop: '10px'}} />
+                  {(financialMetricMode === 'ambos' || financialMetricMode === 'receita') && (
+                    <Bar dataKey="receita" name="Ganhos (R$)" fill="#10b981" radius={[6, 6, 0, 0]} barSize={16} />
+                  )}
+                  {(financialMetricMode === 'ambos' || financialMetricMode === 'despesa') && (
+                    <Bar dataKey="despesa" name="Custos (R$)" fill="#f43f5e" radius={[6, 6, 0, 0]} barSize={16} />
+                  )}
                 </BarChart>
               </ResponsiveContainer>
            </div>
         </div>
 
-        {/* GRÁFICO 2: MOVIMENTAÇÃO POR CATEGORIA / MATERIAL */}
-        <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-           <div className="flex justify-between items-center mb-8">
-              <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase text-sm tracking-tight"><BarChart2 size={20} className="text-indigo-600"/> Receitas por Categoria</h3>
-              <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-50 px-3 py-1 rounded-full tracking-widest">Top Categorias</span>
+        {/* GRÁFICO 2: RANKING DE MATERIAIS (TOP 15 MAIS VENDIDOS / MENOS VENDIDOS) */}
+        <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm flex flex-col justify-between">
+           <div>
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+                <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase text-sm tracking-tight">
+                  <Package size={20} className="text-indigo-600"/> Ranking de Materiais
+                </h3>
+                
+                {/* FILTROS DE TOP 15 / MENOS VENDIDOS */}
+                <div className="bg-slate-50 p-1 rounded-xl flex items-center gap-1 border border-slate-100">
+                  <button onClick={() => setMaterialViewMode('top15')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${materialViewMode === 'top15' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Top 15 Mais</button>
+                  <button onClick={() => setMaterialViewMode('bottom15')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${materialViewMode === 'bottom15' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Top 15 Menos</button>
+                </div>
+             </div>
+             <p className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">
+               {materialViewMode === 'top15' ? 'Materiais com maior saída e volume' : 'Materiais com menor movimentação'}
+             </p>
            </div>
-           <div className="h-64 w-full">
+
+           <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={categoryChartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 700, fill: '#94a3b8'}} />
-                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
-                  <Legend wrapperStyle={{fontSize: '10px', fontWeight: 'bold'}} />
-                  <Bar dataKey="receita" name="Entradas (R$)" fill="#10b981" radius={[8, 8, 0, 0]} barSize={25} />
-                  <Bar dataKey="despesa" name="Saídas (R$)" fill="#f43f5e" radius={[8, 8, 0, 0]} barSize={25} />
+                <BarChart data={materialRankingData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                  <XAxis type="number" axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 700, fill: '#94a3b8'}} tickFormatter={(val) => `R$ ${val / 1000}k`} />
+                  <YAxis type="category" dataKey="name" width={100} axisLine={false} tickLine={false} tick={{fontSize: 9, fontWeight: 700, fill: '#64748b'}} />
+                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} formatter={(val: any) => formatCurrency(Number(val))} />
+                  <Bar dataKey="totalValor" name="Volume Financeiro (R$)" fill={materialViewMode === 'top15' ? '#4f46e5' : '#f59e0b'} radius={[0, 8, 8, 0]} barSize={14} />
                 </BarChart>
               </ResponsiveContainer>
            </div>
         </div>
+
       </div>
 
       {/* ÚLTIMOS LANÇAMENTOS */}
