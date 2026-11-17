@@ -93,30 +93,37 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
     return Object.values(monthsMap);
   }, [financials]);
 
+  // NOVO RANKING FOCADO EXCLUSIVAMENTE EM MATERIAIS / PRODUTOS
   const materialRankingData = useMemo(() => {
-    const productStats: { [key: string]: { name: string; fullName: string; totalQtd: number; totalValor: number } } = {};
+    const productMap: { [key: string]: { name: string; fullName: string; totalValor: number } } = {};
 
+    // 1. Inicializar com todos os produtos/materiais cadastrados no catálogo
     products.forEach(p => {
-      const name = p.name || 'Material sem nome';
-      const cleanName = name.length > 25 ? name.substring(0, 22) + '...' : name;
-      if (!productStats[name]) {
-        productStats[name] = { name: cleanName, fullName: name, totalQtd: Number(p.stock) || 0, totalValor: 0 };
+      const prodName = p.name ? p.name.trim() : 'Material sem nome';
+      const cleanName = prodName.length > 25 ? prodName.substring(0, 22) + '...' : prodName;
+      if (!productMap[prodName]) {
+        productMap[prodName] = { name: cleanName, fullName: prodName, totalValor: Number(p.stock) || 0 };
       }
     });
 
+    // 2. Cruzar com lançamentos financeiros que contenham o nome do material na descrição ou categoria
     filteredFinancials.forEach(f => {
-      const desc = f.description || f.category || 'Outros';
-      const cleanDesc = desc.length > 25 ? desc.substring(0, 22) + '...' : desc;
-      if (!productStats[desc]) {
-        productStats[desc] = { name: cleanDesc, fullName: desc, totalQtd: 0, totalValor: 0 };
-      }
-      productStats[desc].totalValor += Number(f.value) || 0;
-      if (f.type === 'receita' || f.type === 'entrada') {
-        productStats[desc].totalQtd += 1;
-      }
+      const desc = (f.description || '').toUpperCase();
+      const cat = (f.category || '').toUpperCase();
+      const val = Number(f.value) || 0;
+
+      products.forEach(p => {
+        const pName = p.name ? p.name.trim() : '';
+        const pNameUpper = pName.toUpperCase();
+        if (pName && (desc.includes(pNameUpper) || cat.includes(pNameUpper))) {
+          if (productMap[pName]) {
+            productMap[pName].totalValor += val;
+          }
+        }
+      });
     });
 
-    const list = Object.values(productStats);
+    const list = Object.values(productMap);
     list.sort((a, b) => b.totalValor - a.totalValor);
 
     if (materialViewMode === 'top15') {
@@ -208,12 +215,12 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
          </div>
       </div>
 
-      {/* GRÁFICO 2: RANKING DE MATERIAIS (EXPANDIDO E COM ESPAÇAMENTO ADEQUADO) */}
+      {/* GRÁFICO 2: RANKING EXCLUSIVO DE MATERIAIS */}
       <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm flex flex-col justify-between">
          <div>
            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
               <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase text-sm tracking-tight">
-                <Package size={20} className="text-indigo-600"/> Ranking de Materiais
+                <Package size={20} className="text-indigo-600"/> Ranking de Materiais (Produtos)
               </h3>
               
               <div className="bg-slate-50 p-1 rounded-xl flex items-center gap-1 border border-slate-100">
@@ -222,11 +229,10 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
               </div>
            </div>
            <p className="text-xs text-slate-400 font-bold mb-6 uppercase tracking-wider">
-             {materialViewMode === 'top15' ? 'Materiais com maior saída e volume' : 'Materiais com menor movimentação'}
+             {materialViewMode === 'top15' ? 'Materiais com maior saída e volume financeiro' : 'Materiais com menor movimentação'}
            </p>
          </div>
 
-         {/* Altura ampliada para 550px e largura do eixo Y ajustada para 200px para evitar sobreposição */}
          <div className="h-[550px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={materialRankingData} layout="vertical" margin={{ top: 10, right: 30, left: 20, bottom: 10 }}>
