@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { History, AlertTriangle, TrendingUp, ArrowUpRight, ArrowDownLeft, Activity, Filter, BarChart2, Package } from 'lucide-react';
+import { History, AlertTriangle, TrendingUp, ArrowUpRight, ArrowDownLeft, Activity, Filter, BarChart2, Package, ShoppingCart } from 'lucide-react';
 import { FinancialRecord, Product } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -27,6 +27,7 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
   const [selectedFilter, setSelectedFilter] = useState<'mes_atual' | 'mes_anterior' | 'todos'>('todos');
   const [materialViewMode, setMaterialViewMode] = useState<'top15' | 'bottom15'>('top15');
   const [financialMetricMode, setFinancialMetricMode] = useState<'ambos' | 'receita' | 'despesa'>('ambos');
+  const [orderMetricMode, setOrderMetricMode] = useState<'ambos' | 'vendas' | 'compras'>('ambos');
 
   const filteredFinancials = useMemo(() => {
     const now = new Date();
@@ -58,6 +59,7 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
     return { revenue, expense, balance: revenue - expense, lowStock, estimatedNetProfit };
   }, [filteredFinancials, products]);
 
+  // Gráfico 1: Comparativo Financeiro Anual
   const yearlyComparisonData = useMemo(() => {
     const monthsMap: { [key: string]: { name: string; receita: number; despesa: number; saldo: number } } = {
       '01': { name: 'Jan', receita: 0, despesa: 0, saldo: 0 },
@@ -93,11 +95,49 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
     return Object.values(monthsMap);
   }, [financials]);
 
-  // NOVO RANKING FOCADO EXCLUSIVAMENTE EM MATERIAIS / PRODUTOS
+  // NOVO GRÁFICO: Pedidos de Compra vs Venda Mês a Mês (Ano Atual)
+  const yearlyOrdersData = useMemo(() => {
+    const monthsMap: { [key: string]: { name: string; vendas: number; compras: number } } = {
+      '01': { name: 'Jan', vendas: 0, compras: 0 },
+      '02': { name: 'Fev', vendas: 0, compras: 0 },
+      '03': { name: 'Mar', vendas: 0, compras: 0 },
+      '04': { name: 'Abr', vendas: 0, compras: 0 },
+      '05': { name: 'Mai', vendas: 0, compras: 0 },
+      '06': { name: 'Jun', vendas: 0, compras: 0 },
+      '07': { name: 'Jul', vendas: 0, compras: 0 },
+      '08': { name: 'Ago', vendas: 0, compras: 0 },
+      '09': { name: 'Set', vendas: 0, compras: 0 },
+      '10': { name: 'Out', vendas: 0, compras: 0 },
+      '11': { name: 'Nov', vendas: 0, compras: 0 },
+      '12': { name: 'Dez', vendas: 0, compras: 0 },
+    };
+
+    const currentYear = new Date().getFullYear().toString();
+
+    financials.forEach(f => {
+      if (!f.date) return;
+      const [year, month] = f.date.split('-');
+      if (year === currentYear && monthsMap[month]) {
+        const desc = (f.description || '').toUpperCase();
+        const type = (f.type || '').toLowerCase();
+        const val = Number(f.value) || 0;
+
+        // Identificar se é venda ou compra pelo tipo ou descrição
+        if (type === 'receita' || type === 'entrada' || desc.includes('VENDA')) {
+          monthsMap[month].vendas += val;
+        } else if (type === 'despesa' || type === 'saida' || desc.includes('COMPRA')) {
+          monthsMap[month].compras += val;
+        }
+      }
+    });
+
+    return Object.values(monthsMap);
+  }, [financials]);
+
+  // Ranking Exclusivo de Materiais
   const materialRankingData = useMemo(() => {
     const productMap: { [key: string]: { name: string; fullName: string; totalValor: number } } = {};
 
-    // 1. Inicializar com todos os produtos/materiais cadastrados no catálogo
     products.forEach(p => {
       const prodName = p.name ? p.name.trim() : 'Material sem nome';
       const cleanName = prodName.length > 25 ? prodName.substring(0, 22) + '...' : prodName;
@@ -106,7 +146,6 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
       }
     });
 
-    // 2. Cruzar com lançamentos financeiros que contenham o nome do material na descrição ou categoria
     filteredFinancials.forEach(f => {
       const desc = (f.description || '').toUpperCase();
       const cat = (f.category || '').toUpperCase();
@@ -179,43 +218,84 @@ const DashboardView: React.FC<Props> = ({ financials, products }) => {
         </div>
       </div>
 
-      {/* GRÁFICO 1: COMPARATIVO ANUAL */}
-      <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm flex flex-col justify-between">
-         <div>
-           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
-              <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase text-sm tracking-tight">
-                <TrendingUp size={20} className="text-indigo-600"/> Comparativo Anual (Custos e Ganhos)
-              </h3>
-              
-              <div className="bg-slate-50 p-1 rounded-xl flex items-center gap-1 border border-slate-100">
-                <button onClick={() => setFinancialMetricMode('ambos')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${financialMetricMode === 'ambos' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Ambos</button>
-                <button onClick={() => setFinancialMetricMode('receita')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${financialMetricMode === 'receita' ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}>Ganhos</button>
-                <button onClick={() => setFinancialMetricMode('despesa')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${financialMetricMode === 'despesa' ? 'bg-rose-600 text-white' : 'text-slate-500'}`}>Custos</button>
-              </div>
+      {/* GRID DE GRÁFICOS */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* GRÁFICO 1: COMPARATIVO ANUAL (FINANCEIRO) */}
+        <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm flex flex-col justify-between">
+           <div>
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+                <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase text-sm tracking-tight">
+                  <TrendingUp size={20} className="text-indigo-600"/> Comparativo Anual (Custos e Ganhos)
+                </h3>
+                
+                <div className="bg-slate-50 p-1 rounded-xl flex items-center gap-1 border border-slate-100">
+                  <button onClick={() => setFinancialMetricMode('ambos')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${financialMetricMode === 'ambos' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Ambos</button>
+                  <button onClick={() => setFinancialMetricMode('receita')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${financialMetricMode === 'receita' ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}>Ganhos</button>
+                  <button onClick={() => setFinancialMetricMode('despesa')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${financialMetricMode === 'despesa' ? 'bg-rose-600 text-white' : 'text-slate-500'}`}>Custos</button>
+                </div>
+             </div>
+             <p className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">Evolução financeira mês a mês no ano atual</p>
            </div>
-           <p className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">Evolução financeira mês a mês no ano atual</p>
-         </div>
 
-         <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={yearlyComparisonData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 700, fill: '#94a3b8'}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 700, fill: '#94a3b8'}} tickFormatter={(val) => `R$ ${val / 1000}k`} />
-                <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} formatter={(val: any) => formatCurrency(Number(val))} />
-                <Legend wrapperStyle={{fontSize: '11px', fontWeight: 'bold', paddingTop: '15px'}} />
-                {(financialMetricMode === 'ambos' || financialMetricMode === 'receita') && (
-                  <Bar dataKey="receita" name="Ganhos (R$)" fill="#10b981" radius={[8, 8, 0, 0]} barSize={22} />
-                )}
-                {(financialMetricMode === 'ambos' || financialMetricMode === 'despesa') && (
-                  <Bar dataKey="despesa" name="Custos (R$)" fill="#f43f5e" radius={[8, 8, 0, 0]} barSize={22} />
-                )}
-              </BarChart>
-            </ResponsiveContainer>
-         </div>
+           <div className="h-80 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={yearlyComparisonData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 700, fill: '#94a3b8'}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 700, fill: '#94a3b8'}} tickFormatter={(val) => `R$ ${val / 1000}k`} />
+                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} formatter={(val: any) => formatCurrency(Number(val))} />
+                  <Legend wrapperStyle={{fontSize: '11px', fontWeight: 'bold', paddingTop: '15px'}} />
+                  {(financialMetricMode === 'ambos' || financialMetricMode === 'receita') && (
+                    <Bar dataKey="receita" name="Ganhos (R$)" fill="#10b981" radius={[8, 8, 0, 0]} barSize={22} />
+                  )}
+                  {(financialMetricMode === 'ambos' || financialMetricMode === 'despesa') && (
+                    <Bar dataKey="despesa" name="Custos (R$)" fill="#f43f5e" radius={[8, 8, 0, 0]} barSize={22} />
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+           </div>
+        </div>
+
+        {/* NOVO GRÁFICO 2: PEDIDOS DE COMPRA VS VENDA (ANUAL) */}
+        <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm flex flex-col justify-between">
+           <div>
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+                <h3 className="font-black text-slate-800 flex items-center gap-2 uppercase text-sm tracking-tight">
+                  <ShoppingCart size={20} className="text-indigo-600"/> Pedidos Compra x Venda (Anual)
+                </h3>
+                
+                <div className="bg-slate-50 p-1 rounded-xl flex items-center gap-1 border border-slate-100">
+                  <button onClick={() => setOrderMetricMode('ambos')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${orderMetricMode === 'ambos' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Ambos</button>
+                  <button onClick={() => setOrderMetricMode('vendas')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${orderMetricMode === 'vendas' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Vendas</button>
+                  <button onClick={() => setOrderMetricMode('compras')} className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${orderMetricMode === 'compras' ? 'bg-amber-500 text-white' : 'text-slate-500'}`}>Compras</button>
+                </div>
+             </div>
+             <p className="text-xs text-slate-400 font-bold mb-4 uppercase tracking-wider">Volume de pedidos de compra e venda mês a mês</p>
+           </div>
+
+           <div className="h-80 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={yearlyOrdersData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 700, fill: '#94a3b8'}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fontWeight: 700, fill: '#94a3b8'}} tickFormatter={(val) => `R$ ${val / 1000}k`} />
+                  <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} formatter={(val: any) => formatCurrency(Number(val))} />
+                  <Legend wrapperStyle={{fontSize: '11px', fontWeight: 'bold', paddingTop: '15px'}} />
+                  {(orderMetricMode === 'ambos' || orderMetricMode === 'vendas') && (
+                    <Bar dataKey="vendas" name="Vendas (R$)" fill="#4f46e5" radius={[8, 8, 0, 0]} barSize={22} />
+                  )}
+                  {(orderMetricMode === 'ambos' || orderMetricMode === 'compras') && (
+                    <Bar dataKey="compras" name="Compras (R$)" fill="#f59e0b" radius={[8, 8, 0, 0]} barSize={22} />
+                  )}
+                </BarChart>
+              </ResponsiveContainer>
+           </div>
+        </div>
+
       </div>
 
-      {/* GRÁFICO 2: RANKING EXCLUSIVO DE MATERIAIS */}
+      {/* GRÁFICO 3: RANKING EXCLUSIVO DE MATERIAIS */}
       <div className="bg-white rounded-[2.5rem] p-8 border border-slate-100 shadow-sm flex flex-col justify-between">
          <div>
            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
